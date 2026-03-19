@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" class="transition-colors duration-500">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResQ - Emergency Response System</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'Cairo', 'sans-serif'] },
+                    colors: {
+                        primary: '#dc2626',
+                        secondary: '#0f172a',
+                        surface: '#f8fafc',    
+                        success: '#10b981',    
+                        warning: '#f59e0b',    
+                    },
+                    keyframes: {
+                        pulseRed: { '0%, 100%': { opacity: '1', transform: 'scale(1)' }, '50%': { opacity: '0.4', transform: 'scale(1.2)', boxShadow: '0 0 20px rgba(220, 38, 38, 0.5)' } },
+                        pingSoft: { '0%': { transform: 'scale(1)', opacity: '0.8' }, '100%': { transform: 'scale(2.5)', opacity: '0' } }
+                    },
+                    animation: {
+                        pulseRed: 'pulseRed 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        pingSoft: 'pingSoft 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .view-hidden { opacity: 0; pointer-events: none; transform: scale(0.98); z-index: 0; position: absolute; }
+        .view-active { opacity: 1; pointer-events: auto; transform: scale(1); z-index: 10; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); position: absolute; }
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+
+<body class="bg-surface dark:bg-secondary h-screen w-full overflow-hidden flex flex-col transition-colors duration-500 relative font-sans text-secondary dark:text-gray-200">
+
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0"></div>
+
+    <nav class="w-full relative z-50 px-6 py-4 flex justify-between items-center bg-white/70 dark:bg-secondary/70 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+            </div>
+            <span class="text-2xl font-extrabold tracking-tight text-secondary dark:text-white" data-i18n="logo">ResQ</span>
+        </div>
+
+        <div class="hidden md:flex gap-8 bg-gray-100/50 dark:bg-gray-800/50 px-6 py-2 rounded-full border border-gray-200 dark:border-gray-700 backdrop-blur-md">
+            <button onclick="switchView('homeView')" class="nav-btn font-bold text-primary transition" data-i18n="navHome">Home</button>
+            <button onclick="switchView('searchView')" class="nav-btn font-bold text-gray-500 dark:text-gray-400 hover:text-primary transition" data-i18n="navTrack">Track Patient</button>
+            <button onclick="switchView('howView')" class="nav-btn font-bold text-gray-500 dark:text-gray-400 hover:text-primary transition" data-i18n="navHow">How it Works</button>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <button id="themeToggleBtn" class="p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:scale-110 transition"><span id="themeIcon">🌙</span></button>
+            <button id="langToggleBtn" class="font-bold text-sm px-4 py-2 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition">العربية</button>
+            <a href="pages/login.html" class="bg-primary text-white font-bold px-6 py-2.5 rounded-full hover:bg-red-700 shadow-lg transition" data-i18n="navLogin">Login Portal</a>
+        </div>
+    </nav>
+
+    <main class="flex-1 relative w-full overflow-hidden">
+        
+        <section id="homeView" class="view-active absolute inset-0 w-full h-full flex items-center justify-center p-6 lg:p-12">
+            <div class="w-full max-w-7xl grid lg:grid-cols-2 gap-12 items-center h-full overflow-y-auto">
+                
+                <div class="space-y-6 lg:mb-16">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-primary border border-red-200 dark:border-red-800">
+                        <span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                        <span class="text-xs font-bold uppercase tracking-wider" data-i18n="liveBadge">Intelligent Ambulance Dispatch Active</span>
+                    </div>
+                    <h1 class="text-5xl lg:text-7xl font-extrabold leading-tight" data-i18n="mainHeroTitle">
+                        Every Second <br> <span class="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-primary">Counts.</span>
+                    </h1>
+                    <p class="text-lg text-gray-600 dark:text-gray-400 font-medium max-w-xl" data-i18n="mainHeroDesc">
+                        ResQ platform automates accident detection, instantly verifying incidents and dispatching the nearest ambulance.
+                    </p>
+                    <div class="flex gap-4 pt-4">
+                        <button onclick="switchView('searchView')" class="bg-secondary dark:bg-white text-white dark:text-secondary px-8 py-4 rounded-xl font-bold hover:scale-105 transition shadow-xl" data-i18n="btnTrack">Track Patient Status</button>
+                    </div>
+                </div>
+
+                <div class="relative w-full h-[550px] max-w-lg mx-auto bg-white/50 dark:bg-gray-900/50 backdrop-blur-2xl border border-gray-200 dark:border-gray-800 rounded-[2.5rem] shadow-2xl p-6 flex flex-col z-10 transition-colors">
+                    <div class="flex justify-between items-center border-b border-gray-200 dark:border-gray-800 pb-4 mb-4">
+                        <span class="font-bold text-sm" data-i18n="simTitle">Live Coordination Map</span>
+                        <span class="text-xs text-success font-bold bg-success/10 px-3 py-1.5 rounded-full" id="simStatus">System Active</span>
+                    </div>
+                    
+                    <div id="simCanvas" class="flex-1 relative bg-gray-100/50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <div class="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:30px_30px]"></div>
+                        
+                        <div class="absolute top-[20%] left-[20%] -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center border border-blue-500 z-0">
+                            <span class="text-xl">🏥</span>
+                            <span class="absolute -bottom-5 text-[10px] font-bold text-blue-500 whitespace-nowrap">City Hosp.</span>
+                        </div>
+
+                        <div class="absolute top-[80%] left-[80%] -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center border border-blue-500 z-0">
+                            <span class="text-xl">🏥</span>
+                            <span class="absolute -bottom-5 text-[10px] font-bold text-blue-500 whitespace-nowrap">Central ER</span>
+                        </div>
+
+                        <div id="amb_1" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-20 transition-all">
+                            <span class="text-[14px]">🚑</span><span class="absolute -top-4 text-[9px] font-bold text-gray-500 unit-label">U-1</span>
+                        </div>
+                        <div id="amb_2" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-20 transition-all">
+                            <span class="text-[14px]">🚑</span><span class="absolute -top-4 text-[9px] font-bold text-gray-500 unit-label">U-2</span>
+                        </div>
+                        <div id="amb_3" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-20 transition-all">
+                            <span class="text-[14px]">🚑</span><span class="absolute -top-4 text-[9px] font-bold text-gray-500 unit-label">U-3</span>
+                        </div>
+                    </div>
+
+                    <div id="simFeed" class="mt-4 bg-gray-50 dark:bg-gray-900/80 rounded-xl p-3 text-[11px] font-mono text-gray-600 dark:text-gray-400 h-24 overflow-hidden flex flex-col justify-end gap-1 border border-gray-200 dark:border-gray-800">
+                        </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="searchView" class="view-hidden absolute inset-0 w-full h-full flex items-center justify-center p-6 lg:p-12 overflow-y-auto">
+            <div class="bg-white/80 dark:bg-gray-900/80 backdrop-blur-2xl p-10 rounded-[2.5rem] shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-2xl text-center">
+                <div class="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl mx-auto flex items-center justify-center mb-6">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <h2 class="text-3xl font-extrabold mb-2" data-i18n="searchTitle">Track Patient Status</h2>
+                <p class="text-gray-500 mb-8 max-w-md mx-auto" data-i18n="searchDesc">Enter the unique Device UID to check the real-time status and destination hospital of the patient.</p>
+                <form id="visitorSearchForm" class="space-y-4 text-left">
+                    <div>
+                        <label class="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-300" data-i18n="deviceUid">Device UID</label>
+                        <input type="text" id="searchInput" required class="w-full px-5 py-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-2 focus:ring-primary focus:border-primary transition font-mono text-gray-900 dark:text-white" placeholder="RQ-98273-XYZ">
+                    </div>
+                    <button type="submit" class="w-full bg-secondary dark:bg-white text-white dark:text-secondary font-bold text-lg py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition shadow-lg" data-i18n="btnSearch">Search Database</button>
+                </form>
+            </div>
+        </section>
+
+<section id="howView" class="view-hidden absolute inset-0 w-full h-full flex items-center justify-center bg-[#020408] px-6 py-12 overflow-hidden">
+            <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,#1e293b_0%,transparent_70%)]"></div>
+            <div class="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+
+            <div class="w-full max-w-6xl h-full flex flex-col relative z-10">
+                <div class="mb-10 flex justify-between items-end border-b border-white/10 pb-6">
+                    <div>
+                        <h2 class="text-4xl md:text-5xl font-black text-white tracking-tighter uppercase italic" data-i18n="howTitle">System Protocol</h2>
+                        <p class="text-primary font-mono text-xs mt-2 tracking-[0.3em] uppercase">Autonomous Emergency Response</p>
+                    </div>
+                    <div class="hidden md:block text-right font-mono text-[10px] text-gray-500">
+                        LATENCY: <span class="text-success">0.002ms</span><br>
+                        ENCRYPTION: <span class="text-success">AES-256</span>
+                    </div>
+                </div>
+
+                <div class="flex-1 relative flex items-center justify-center">
+                    
+                    <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1000 400" preserveAspectRatio="none">
+                        <defs>
+                            <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                                <feComposite in="SourceGraphic" in2="blur" operator="over"></feComposite>
+                            </filter>
+                        </defs>
+                        <path id="path-0-1" d="M 150 200 C 250 200, 250 100, 350 100" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
+                        <path id="path-1-2" d="M 450 100 C 550 100, 550 300, 650 300" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
+                        <path id="path-2-3" d="M 750 300 C 850 300, 850 200, 950 200" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
+                        
+                        <circle id="wfPulse" r="6" fill="#dc2626" filter="url(#neon-glow)" class="opacity-0">
+                            <animateMotion id="wfMotion" dur="1.2s" begin="indefinite" fill="freeze"></animateMotion>
+                        </circle>
+                    </svg>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 w-full relative z-20">
+                        
+                        <div id="step-0" class="wf-card group bg-gray-900/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 transition-all duration-500 hover:border-primary/40">
+                            <div class="h-2 w-12 bg-primary/20 rounded-full mb-6 overflow-hidden">
+                                <div class="wf-loader h-full bg-primary w-0"></div>
+                            </div>
+                            <div class="text-4xl mb-4 group-[.active]:scale-125 transition-transform duration-500">🚗</div>
+                            <h3 class="text-white font-bold text-lg mb-2" data-i18n="step1Title">Hardware Detection</h3>
+                            <p class="text-gray-500 text-xs leading-relaxed" data-i18n="step1Desc">G-Force sensors detect impact instantly and send coords.</p>
+                        </div>
+
+                        <div id="step-1" class="wf-card group bg-gray-900/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 transition-all duration-500 mt-0 md:-mt-20">
+                            <div class="flex justify-between items-center mb-6">
+                                <div class="text-[10px] font-mono text-warning font-bold uppercase">Timer Check</div>
+                                <div class="wf-counter font-mono text-warning text-xs">10.00s</div>
+                            </div>
+                            <div class="text-4xl mb-4 group-[.active]:rotate-12 transition-transform">☁️</div>
+                            <h3 class="text-white font-bold text-lg mb-2" data-i18n="step2Title">10-Sec Verification</h3>
+                            <div class="grid grid-cols-5 gap-1 mt-4">
+                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                            </div>
+                        </div>
+
+                        <div id="step-2" class="wf-card group bg-gray-900/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 transition-all duration-500 mt-0 md:mt-20">
+                            <div class="relative w-full h-20 mb-4 flex items-center justify-center">
+                                <div class="absolute inset-0 bg-blue-500/5 rounded-full animate-pulse group-[.active]:block hidden"></div>
+                                <div class="text-4xl relative z-10 group-[.active]:animate-bounce">🚑</div>
+                            </div>
+                            <h3 class="text-white font-bold text-lg mb-2" data-i18n="step3Title">Auto-Dispatch</h3>
+                            <div class="text-[10px] font-mono text-blue-400 opacity-0 group-[.active]:opacity-100 transition-opacity">SCANNING NEAREST UNIT...</div>
+                        </div>
+
+                        <div id="step-3" class="wf-card group bg-gray-900/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 transition-all duration-500">
+                            <div class="flex items-center gap-2 mb-6">
+                                <div class="flex-1 h-[1px] bg-success/20"></div>
+                                <div class="w-2 h-2 rounded-full bg-success animate-ping"></div>
+                                <div class="flex-1 h-[1px] bg-success/20"></div>
+                            </div>
+                            <div class="text-4xl mb-4 group-[.active]:drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]">🏥</div>
+                            <h3 class="text-white font-bold text-lg mb-2" data-i18n="step4Title">Hospital Alert</h3>
+                            <p class="text-gray-500 text-xs leading-relaxed" data-i18n="step4Desc">Nearest hospital receives patient data to prepare ER instantly.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-10 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center justify-between font-mono text-[11px]">
+                    <div class="flex items-center gap-6">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-success"></span>
+                            <span class="text-gray-400 uppercase">Comm Link: Stable</span>
+                        </div>
+                        <div class="hidden md:flex items-center gap-2 border-l border-white/10 pl-6">
+                            <span class="text-gray-500">BUFFER:</span>
+                            <span class="text-white">0.024s</span>
+                        </div>
+                    </div>
+                    <div id="wfLog" class="text-primary font-bold uppercase tracking-widest">Initialising ResQ Protocol...</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script type="module" src="js/core/theme.js"></script>
+    <script type="module" src="js/core/language.js"></script>
+    <script type="module" src="js/home/landing.js"></script>
+
+</body>
+</html>
