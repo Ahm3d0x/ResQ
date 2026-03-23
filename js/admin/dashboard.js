@@ -4,369 +4,392 @@ let adminMap;
 let markers = { hospitals: {}, ambulances: {}, incidents: {}, devices: {} };
 let rawData = { hospitals: {}, ambulances: {}, incidents: {}, devices: {} };
 let routes = {}; 
+let patrolRoutes = {}; 
+
+// ألوان مميزة للمسارات فقط (Routes)
+const ROUTE_COLORS = ['#3b82f6', '#f59e0b', '#a855f7', '#ec4899', '#06b6d4', '#14b8a6'];
+
+const FIXED_ZONES = [
+    { lat: 30.0444, lng: 31.2357 }, 
+    { lat: 30.0600, lng: 31.3300 }, 
+    { lat: 29.9600, lng: 31.2500 }, 
+    { lat: 30.0500, lng: 31.1800 }  
+];
 
 export async function initDashboard() {
-    if(!adminMap) setupMap();
+    setupMap();
     await loadEntities();
-    await loadAndRoamDevices(); 
-    startPatrolsAndQueues(); 
+    await loadDevices();
+    startPatrolsAndQueues();
     setupRealtime();
+    setupDeviceSearch();
 }
 
 function setupMap() {
     adminMap = L.map('adminMap', { zoomControl: false }).setView([30.0444, 31.2357], 12);
     L.control.zoom({ position: 'bottomright' }).addTo(adminMap);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(adminMap);
+    window.addEventListener('resize', () => { if(adminMap) adminMap.invalidateSize(); });
 }
 
-const icons = {
-    hospital: L.divIcon({ html: '<div class="w-8 h-8 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center text-white shadow-lg"><i class="fa-solid fa-hospital"></i></div>', className: ''}),
-    ambulance_available: L.divIcon({ html: '<div class="w-8 h-8 bg-success rounded-full border-2 border-white flex items-center justify-center text-white shadow-lg"><i class="fa-solid fa-truck-medical"></i></div>', className: ''}),
-    ambulance_busy: L.divIcon({ html: '<div class="w-8 h-8 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-white shadow-lg"><i class="fa-solid fa-truck-medical"></i></div>', className: ''}),
-    incident_pending: L.divIcon({ html: '<div class="leaflet-incident-marker w-10 h-10"></div><div class="absolute inset-0 flex items-center justify-center text-xl">💥</div>', className: ''}),
-    incident_confirmed: L.divIcon({ html: '<div class="w-8 h-8 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white shadow-lg"><i class="fa-solid fa-triangle-exclamation"></i></div>', className: ''}),
-    car: L.divIcon({ html: '<div class="text-2xl drop-shadow-md">🚙</div>', className: ''})
-};
-
-// ==========================================
-// تعريف دالة التركيز العام (متاحة للـ HTML)
-// ==========================================
-window.focusMapEntity = function(type, id) {
-    const data = type === 'Incident' ? rawData.incidents[id] : rawData.ambulances[id];
-    if (data) openPanel(type, data);
+// 🔥 دالة ذكية تصنع إسعاف موحد اللون، مع نقطة صغيرة تمثل لون مساره
+function getAmbIcon(routeColor, status) {
+    // لون موحد: أخضر للمتاح، رمادي للمغلق، أحمر للمشغول
+    let baseColor = status === 'available' ? '#10b981' : status === 'offline' ? '#6b7280' : '#dc2626';
+    return L.divIcon({
+        html: `<div style="background-color: ${baseColor}" class="relative w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white shadow-[0_0_10px_rgba(0,0,0,0.5)] transition-colors duration-300">
+                  <i class="fa-solid fa-truck-medical text-xs"></i>
+                  <span class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-gray-900 shadow-sm" style="background-color: ${routeColor}"></span>
+               </div>`,
+        className: ''
+    });
 }
 
+const hospitalIcon = L.divIcon({ html: '<div class="w-8 h-8 bg-gray-800 rounded-full border-2 border-blue-500 flex items-center justify-center text-blue-400 shadow-lg"><i class="fa-solid fa-hospital text-xs"></i></div>', className: ''});
+const incidentIcon = L.divIcon({ html: '<div class="leaflet-incident-marker w-8 h-8"></div><div class="absolute inset-0 flex items-center justify-center text-lg">💥</div>', className: ''});
+const carIcon = L.divIcon({ html: '<div class="w-8 h-8 bg-white dark:bg-gray-800 rounded-full border-2 border-gray-400 dark:border-gray-600 flex items-center justify-center shadow-lg transition-transform hover:scale-110"><i class="fa-solid fa-car-side text-gray-700 dark:text-gray-300 text-[12px]"></i></div>', className: ''});
+
 // ==========================================
-// 1. تحميل وتحديث البيانات
+// 1. تحميل البيانات
 // ==========================================
 async function loadEntities() {
     const { data: hData } = await supabase.from(DB_TABLES.HOSPITALS).select('*');
     hData?.forEach(h => {
         rawData.hospitals[h.id] = h;
         if(!markers.hospitals[h.id]) {
-            markers.hospitals[h.id] = L.marker([h.lat, h.lng], {icon: icons.hospital}).addTo(adminMap);
+            markers.hospitals[h.id] = L.marker([h.lat, h.lng], {icon: hospitalIcon}).addTo(adminMap);
             markers.hospitals[h.id].on('click', () => openPanel('Hospital', h));
         }
     });
 
     const { data: aData } = await supabase.from(DB_TABLES.AMBULANCES).select('*');
-    rawData.ambulances = {}; // Refresh
-    aData?.forEach(a => {
+    aData?.forEach((a, index) => {
+        a.routeColor = ROUTE_COLORS[index % ROUTE_COLORS.length]; // تعيين لون مسار ثابت
+        
+        let zone = FIXED_ZONES[index % FIXED_ZONES.length];
+        a.baseLat = zone.lat;
+        a.baseLng = zone.lng;
+
         rawData.ambulances[a.id] = a;
-        let icon = a.status === 'available' ? icons.ambulance_available : icons.ambulance_busy;
         if(!markers.ambulances[a.id]) {
-            markers.ambulances[a.id] = L.marker([a.lat, a.lng], {icon: icon}).addTo(adminMap);
+            markers.ambulances[a.id] = L.marker([a.lat, a.lng], {icon: getAmbIcon(a.routeColor, a.status)}).addTo(adminMap);
             markers.ambulances[a.id].on('click', () => openPanel('Ambulance', a));
         } else {
-            markers.ambulances[a.id].setLatLng([a.lat, a.lng]).setIcon(icon);
+            markers.ambulances[a.id].setLatLng([a.lat, a.lng]).setIcon(getAmbIcon(a.routeColor, a.status));
         }
     });
     renderAmbulances();
 
-    const { data: iData } = await supabase.from(DB_TABLES.INCIDENTS).select('*, devices(device_uid, car_model, car_plate)').not('status', 'in', '("completed","canceled")').order('created_at', { ascending: false });
-    rawData.incidents = {}; // Refresh
+    const { data: iData } = await supabase.from(DB_TABLES.INCIDENTS).select('*, devices(device_uid, car_model, car_plate)').not('status', 'in', '("completed","canceled")');
+    rawData.incidents = {};
     iData?.forEach(i => {
         rawData.incidents[i.id] = i;
-        handleIncidentVisuals(i);
+        handleIncidentVisuals(i); // الاعتماد على الدالة لمنع ظهور in_progress
     });
     renderIncidents();
 }
 
+async function loadDevices() {
+    const { data: dData } = await supabase.from(DB_TABLES.DEVICES).select('*, users(name, phone)');
+    dData?.forEach((d, index) => {
+        let lat = 30.04 + (Math.random() - 0.5) * 0.1;
+        let lng = 31.23 + (Math.random() - 0.5) * 0.1;
+        rawData.devices[d.id] = { ...d, lat, lng };
+        markers.devices[d.id] = L.marker([lat, lng], {icon: carIcon}).addTo(adminMap);
+        markers.devices[d.id].on('click', () => openPanel('Device', rawData.devices[d.id]));
+    });
+    renderDevices(Object.values(rawData.devices));
+}
+
 // ==========================================
-// 2. الكروت الجانبية والتفاعل
+// 2. الواجهة
 // ==========================================
+window.focusMapEntity = function(type, id) {
+    let data = type === 'Incident' ? rawData.incidents[id] : type === 'Ambulance' ? rawData.ambulances[id] : rawData.devices[id];
+    if (data) openPanel(type, data);
+}
+
+window.toggleRoute = function(incId, e) {
+    e.stopPropagation();
+    if(routes[incId]) {
+        if(adminMap.hasLayer(routes[incId])) adminMap.removeLayer(routes[incId]);
+        else adminMap.addLayer(routes[incId]);
+    }
+}
+
 function openPanel(type, data) {
     const panel = document.getElementById('detailsPanel');
-    const title = document.getElementById('panelTitle');
-    const content = document.getElementById('panelContent');
-    
     panel.classList.remove('translate-x-[120%]');
-    title.innerHTML = `<span class="${type==='Incident'?'text-primary':type==='Ambulance'?'text-success':'text-blue-500'}">${type} Details</span>`;
+    document.getElementById('panelTitle').innerHTML = `<span class="${type==='Incident'?'text-primary':type==='Ambulance'?'text-success':type==='Device'?'text-blue-500':'text-gray-200'}">${type} Info</span>`;
     
     if (type === 'Incident') {
-        if(adminMap) adminMap.flyTo([data.latitude, data.longitude], 16, {animate:true, duration: 1.5});
-        content.innerHTML = `
-            <div class="flex justify-between border-b dark:border-gray-700 pb-2"><span class="font-bold">ID:</span> <span class="font-mono">#INC-${data.id}</span></div>
-            <div class="flex justify-between border-b dark:border-gray-700 pb-2"><span class="font-bold">Status:</span> <span class="uppercase text-primary font-bold">${data.status}</span></div>
-            <div class="flex justify-between border-b dark:border-gray-700 pb-2"><span class="font-bold">G-Force:</span> <span>${data.g_force}</span></div>
-            <div class="flex justify-between border-b dark:border-gray-700 pb-2"><span class="font-bold">Device:</span> <span class="font-mono text-xs">${data.devices?.device_uid || 'N/A'}</span></div>
-            <div class="flex justify-between"><span class="font-bold">Vehicle:</span> <span class="text-xs text-right">${data.devices?.car_model || 'N/A'} <br>(${data.devices?.car_plate || ''})</span></div>
+        adminMap.flyTo([data.latitude, data.longitude], 15, {animate:true});
+        document.getElementById('panelContent').innerHTML = `
+            <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>Status</span><span class="text-primary font-bold uppercase">${data.status}</span></div>
+            <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>G-Force</span><span>${data.g_force}</span></div>
+            <div class="flex justify-between text-xs text-gray-400 mt-2"><span>${data.devices?.car_model || ''}</span><span>${data.devices?.device_uid}</span></div>
         `;
-    } 
-    else if (type === 'Ambulance') {
-        if(adminMap) adminMap.flyTo([data.lat, data.lng], 16, {animate:true, duration: 1.5});
-        content.innerHTML = `
-            <div class="flex justify-between border-b dark:border-gray-700 pb-2"><span class="font-bold">Code:</span> <span class="font-mono">${data.code}</span></div>
-            <div class="flex justify-between border-b dark:border-gray-700 pb-2"><span class="font-bold">Status:</span> <span class="uppercase font-bold ${data.status==='available'?'text-success':'text-warning'}">${data.status.replace('_', ' ')}</span></div>
+    } else if (type === 'Ambulance') {
+        adminMap.flyTo([data.lat, data.lng], 15, {animate:true});
+        document.getElementById('panelContent').innerHTML = `
+            <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>Unit Code</span><span class="font-bold text-white">${data.code}</span></div>
+            <div class="flex justify-between"><span>Status</span><span class="uppercase font-bold ${data.status==='available'?'text-success':'text-red-500'}">${data.status.replace('_', ' ')}</span></div>
         `;
-    }
-    else if (type === 'Hospital') {
-        if(adminMap) adminMap.flyTo([data.lat, data.lng], 16, {animate:true, duration: 1.5});
-        content.innerHTML = `
-            <div class="flex justify-between border-b dark:border-gray-700 pb-2"><span class="font-bold">Name:</span> <span>${data.name}</span></div>
-            <div class="flex justify-between"><span class="font-bold">Available Beds:</span> <span class="text-xl font-black ${data.available_beds > 0 ? 'text-success':'text-primary'}">${data.available_beds}</span></div>
+    } else if (type === 'Hospital') {
+        adminMap.flyTo([data.lat, data.lng], 15, {animate:true});
+        document.getElementById('panelContent').innerHTML = `
+            <div class="flex justify-between border-b dark:border-white/10 pb-2 font-bold text-gray-800 dark:text-white"><span>${data.name}</span></div>
+            <div class="flex justify-between"><span>Available Beds</span><span class="text-xl font-black text-blue-400">${data.available_beds}</span></div>
+        `;
+    } else if (type === 'Device') {
+        adminMap.flyTo([data.lat, data.lng], 16, {animate:true});
+        document.getElementById('panelContent').innerHTML = `
+            <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>Owner</span><span class="font-bold text-gray-800 dark:text-white">${data.users?.name || 'N/A'}</span></div>
+            <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>Phone</span><span class="font-mono text-gray-600 dark:text-gray-300">${data.users?.phone || 'N/A'}</span></div>
+            <div class="flex justify-between text-xs mt-2"><span>${data.car_model || ''}</span><span class="text-gray-500">${data.car_plate || ''}</span></div>
+            <div class="text-center mt-3 text-[10px] text-gray-400 font-mono">${data.device_uid}</div>
         `;
     }
 }
 
-// ==========================================
-// 3. المحاكاة (Roam, Sweep, Discharge)
-// ==========================================
-async function loadAndRoamDevices() {
-    const { data: devices } = await supabase.from(DB_TABLES.DEVICES).select('*');
-    devices?.forEach(d => {
-        // حصر السيارات داخل نطاق ضيق لتجنب النيل والصحراء (وسط القاهرة تقريباً)
-        let lat = 30.0444 + (Math.random() - 0.5) * 0.05;
-        let lng = 31.2357 + (Math.random() - 0.5) * 0.05;
-        rawData.devices[d.id] = { ...d, lat, lng };
-        markers.devices[d.id] = L.marker([lat, lng], {icon: icons.car}).addTo(adminMap);
+function setupDeviceSearch() {
+    document.getElementById('deviceSearchInput').addEventListener('keyup', (e) => {
+        const val = e.target.value.toLowerCase();
+        const filtered = Object.values(rawData.devices).filter(d => 
+            d.device_uid.toLowerCase().includes(val) || (d.users && d.users.name.toLowerCase().includes(val))
+        );
+        renderDevices(filtered);
     });
 }
 
-function startPatrolsAndQueues() {
-    // حركة السيارات والإسعاف المتاح
+function renderDevices(devicesList) {
+    const list = document.getElementById('devicesPanelList');
+    list.innerHTML = devicesList.map(d => `
+        <div onclick="focusMapEntity('Device', ${d.id})" class="bg-gray-50 dark:bg-white/5 border border-transparent dark:border-white/10 rounded-lg p-2 cursor-pointer hover:border-blue-500 transition-colors">
+            <div class="flex justify-between items-center"><span class="font-bold text-xs text-blue-500 dark:text-blue-400">${d.users?.name || 'Unknown'}</span><span class="text-[10px] text-gray-500">${d.car_plate || ''}</span></div>
+            <div class="text-[10px] text-gray-400 mt-1">${d.device_uid}</div>
+        </div>
+    `).join('');
+}
+
+// ==========================================
+// 3. الدوريات وحماية التكدس
+// ==========================================
+async function startPatrolsAndQueues() {
     setInterval(() => {
+        Object.values(rawData.ambulances).forEach(async amb => {
+            if (amb.status === 'available' && !patrolRoutes[amb.id]) {
+                let targetLat = amb.baseLat + (Math.random() - 0.5) * 0.04;
+                let targetLng = amb.baseLng + (Math.random() - 0.5) * 0.04;
+                try {
+                    const url = `https://router.project-osrm.org/route/v1/driving/${amb.lng},${amb.lat};${targetLng},${targetLat}?geometries=geojson`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if(data.code === 'Ok' && data.routes[0].geometry.coordinates.length > 0) {
+                        patrolRoutes[amb.id] = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                        moveAlongPatrol(amb);
+                    } else {
+                        amb.lat = amb.baseLat; amb.lng = amb.baseLng;
+                        if(markers.ambulances[amb.id]) markers.ambulances[amb.id].setLatLng([amb.lat, amb.lng]);
+                    }
+                } catch(e) { } 
+            }
+        });
+
         Object.values(rawData.devices).forEach(dev => {
-            const hasIncident = Object.values(rawData.incidents).some(inc => inc.device_id === dev.id);
-            if (!hasIncident && markers.devices[dev.id]) {
-                dev.lat += (Math.random() - 0.5) * 0.002; // حركة بطيئة جدا
-                dev.lng += (Math.random() - 0.5) * 0.002;
+            const hasInc = Object.values(rawData.incidents).some(i => i.device_id === dev.id);
+            if (!hasInc && markers.devices[dev.id]) {
+                dev.lat += (Math.random() - 0.5) * 0.001;
+                dev.lng += (Math.random() - 0.5) * 0.001;
                 markers.devices[dev.id].setLatLng([dev.lat, dev.lng]);
-            } else if (hasIncident && markers.devices[dev.id]) {
-                adminMap.removeLayer(markers.devices[dev.id]);
-                delete markers.devices[dev.id];
             }
         });
+    }, 5000);
 
-        Object.values(rawData.ambulances).forEach(amb => {
-            if (amb.status === 'available' && markers.ambulances[amb.id]) {
-                amb.lat += (Math.random() - 0.5) * 0.003;
-                amb.lng += (Math.random() - 0.5) * 0.003;
-                markers.ambulances[amb.id].setLatLng([amb.lat, amb.lng]);
-            }
-        });
-    }, 4000);
+    setInterval(processSystemQueues, 8000);
+}
 
-    // تفريغ المستشفيات
-    setInterval(async () => {
-        const fullHospitals = Object.values(rawData.hospitals).filter(h => h.available_beds < 15); 
-        if (fullHospitals.length > 0) {
-            let h = fullHospitals[Math.floor(Math.random() * fullHospitals.length)];
-            await supabase.from(DB_TABLES.HOSPITALS).update({ available_beds: h.available_beds + 1 }).eq('id', h.id);
-            console.log(`[Sim] Bed freed at ${h.name}`);
-        }
-    }, 45000);
-
-    // Kicker (Sweeper) القوي: يمر كل 8 ثواني للتأكد من عدم تعليق أي حادث
-    setInterval(() => {
-        processSystemQueues();
-    }, 8000);
+async function moveAlongPatrol(amb) {
+    if(!patrolRoutes[amb.id] || amb.status !== 'available') return;
+    const path = patrolRoutes[amb.id];
+    for(let i=0; i<path.length; i++) {
+        if(amb.status !== 'available') break; 
+        amb.lat = path[i][0];
+        amb.lng = path[i][1];
+        if(markers.ambulances[amb.id]) markers.ambulances[amb.id].setLatLng(path[i]);
+        await new Promise(r => setTimeout(r, 200)); 
+    }
+    patrolRoutes[amb.id] = null; 
 }
 
 // ==========================================
 // 4. التوجيه (Dispatch)
 // ==========================================
 function setupRealtime() {
-    supabase.channel('admin_auto_dispatch')
-        .on('postgres_changes', { event: '*', schema: 'public', table: DB_TABLES.INCIDENTS }, async payload => {
+    supabase.channel('dispatch_chan')
+        .on('postgres_changes', { event: '*', schema: 'public', table: DB_TABLES.INCIDENTS }, async p => {
             await loadEntities();
-            if(payload.eventType === 'INSERT') {
-                const inc = rawData.incidents[payload.new.id];
-                if(inc && adminMap) adminMap.flyTo([inc.latitude, inc.longitude], 15, { animate: true });
-                setTimeout(() => attemptDispatch(inc), 10000); // 10s Timer
+            if(p.eventType === 'INSERT') {
+                const inc = rawData.incidents[p.new.id];
+                if(inc) adminMap.flyTo([inc.latitude, inc.longitude], 15);
+                setTimeout(() => attemptDispatch(inc), 10000);
             }
         }).subscribe();
 }
 
-async function attemptDispatch(incident) {
-    // التأكد من جلب أحدث داتا لتجنب الدبلجة
-    const { data: currentInc } = await supabase.from(DB_TABLES.INCIDENTS).select('*').eq('id', incident.id).single();
-    if (!currentInc || currentInc.status !== 'pending' && currentInc.status !== 'confirmed') return;
+async function attemptDispatch(inc) {
+    const { data: currInc } = await supabase.from(DB_TABLES.INCIDENTS).select('*').eq('id', inc.id).single();
+    if (!currInc || currInc.status === 'canceled' || currInc.status === 'completed') return;
 
-    if (currentInc.status === 'pending') {
-        await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'confirmed', confirmed_at: new Date() }).eq('id', currentInc.id);
-        await supabase.from('incident_logs').insert([{ incident_id: currentInc.id, action: 'confirmed', performed_by: 'system' }]);
-        currentInc.status = 'confirmed';
+    if (currInc.status === 'pending') {
+        await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'confirmed' }).eq('id', currInc.id);
+        currInc.status = 'confirmed';
     }
 
     const availableAmbs = Object.values(rawData.ambulances).filter(a => a.status === 'available');
-    if (availableAmbs.length === 0) {
-        console.log(`Incident #${currentInc.id} QUEUED: No Ambulances.`);
-        return await loadEntities(); 
-    }
-
     const availableHosps = Object.values(rawData.hospitals).filter(h => h.available_beds > 0);
-    if (availableHosps.length === 0) {
-        console.log(`Incident #${currentInc.id} QUEUED: No Hospital Beds!`);
-        return await loadEntities(); 
-    }
+    
+    if (availableAmbs.length === 0 || availableHosps.length === 0) return await loadEntities();
 
-    let nearestAmb = availableAmbs.reduce((prev, curr) => 
-        getHaversineDistance(currentInc.latitude, currentInc.longitude, curr.lat, curr.lng) < getHaversineDistance(currentInc.latitude, currentInc.longitude, prev.lat, prev.lng) ? curr : prev
-    );
+    let nearestAmb = availableAmbs.reduce((p, c) => getDist(currInc.latitude, currInc.longitude, c.lat, c.lng) < getDist(currInc.latitude, currInc.longitude, p.lat, p.lng) ? c : p);
+    let nearestHosp = availableHosps.reduce((p, c) => getDist(currInc.latitude, currInc.longitude, c.lat, c.lng) < getDist(currInc.latitude, currInc.longitude, p.lat, p.lng) ? c : p);
 
-    let nearestHosp = availableHosps.reduce((prev, curr) => 
-        getHaversineDistance(currentInc.latitude, currentInc.longitude, curr.lat, curr.lng) < getHaversineDistance(currentInc.latitude, currentInc.longitude, prev.lat, prev.lng) ? curr : prev
-    );
+    patrolRoutes[nearestAmb.id] = null;
 
-    // حجز مزدوج (إسعاف وسرير) لتجنب التضارب
     await Promise.all([
         supabase.from(DB_TABLES.HOSPITALS).update({ available_beds: nearestHosp.available_beds - 1 }).eq('id', nearestHosp.id),
         supabase.from(DB_TABLES.AMBULANCES).update({ status: 'en_route_incident' }).eq('id', nearestAmb.id),
-        supabase.from(DB_TABLES.INCIDENTS).update({ status: 'assigned', assigned_ambulance_id: nearestAmb.id, assigned_hospital_id: nearestHosp.id }).eq('id', currentInc.id),
-        supabase.from('incident_logs').insert([{ incident_id: currentInc.id, action: 'assigned_ambulance', performed_by: 'system', note: `Assigned ${nearestAmb.code} to ${nearestHosp.name}` }])
+        supabase.from(DB_TABLES.INCIDENTS).update({ status: 'assigned', assigned_ambulance_id: nearestAmb.id, assigned_hospital_id: nearestHosp.id }).eq('id', currInc.id)
     ]);
     
     await loadEntities();
-    startRouteSimulation(nearestAmb, currentInc, nearestHosp);
+    startRouteSimulation(nearestAmb, currInc, nearestHosp);
 }
 
 async function processSystemQueues() {
     await loadEntities();
-    const queuedIncidents = Object.values(rawData.incidents)
-        .filter(inc => inc.status === 'confirmed' && !inc.assigned_ambulance_id)
-        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-    if(queuedIncidents.length > 0) {
-        console.log(`[Sweeper] Found ${queuedIncidents.length} queued incidents. Attempting dispatch...`);
-        for (let inc of queuedIncidents) { await attemptDispatch(inc); }
-    }
+    const queued = Object.values(rawData.incidents).filter(i => i.status === 'confirmed' && !i.assigned_ambulance_id);
+    for (let inc of queued) await attemptDispatch(inc);
 }
 
 // ==========================================
-// 5. محاكاة المسار الحقيقي
+// 5. محاكاة المسار وإخفاء الحادث
 // ==========================================
 async function startRouteSimulation(amb, inc, hosp) {
     try {
         const url = `https://router.project-osrm.org/route/v1/driving/${amb.lng},${amb.lat};${inc.longitude},${inc.latitude};${hosp.lng},${hosp.lat}?geometries=geojson`;
-        const response = await fetch(url);
-        const data = await response.json();
+        const res = await fetch(url);
+        const data = await res.json();
         
-        // لو الـ API فشل بسبب إن النقطة في النيل مثلاً، اعمل مسار وهمي مباشر
-        let routeCoords;
-        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-            routeCoords = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
-        } else {
-            console.warn("OSRM Route Failed (Off-road). Using direct line fallback.");
-            routeCoords = [[amb.lat, amb.lng], [inc.latitude, inc.longitude], [hosp.lat, hosp.lng]];
-        }
+        let routeCoords = data.code === 'Ok' ? data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]) : [[amb.lat, amb.lng], [inc.latitude, inc.longitude], [hosp.lat, hosp.lng]];
 
-        if(routes[inc.id] && adminMap) adminMap.removeLayer(routes[inc.id]);
-        routes[inc.id] = L.polyline(routeCoords, { color: '#f59e0b', weight: 4, dashArray: '10, 10' }).addTo(adminMap);
+        if(routes[inc.id]) adminMap.removeLayer(routes[inc.id]);
+        
+        // رسم المسار باستخدام اللون المخصص للمسار (routeColor)
+        routes[inc.id] = L.polyline(routeCoords, { color: amb.routeColor, weight: 5, dashArray: '10, 10' }).addTo(adminMap);
 
         const marker = markers.ambulances[amb.id];
-        let indexOfCrash = Math.floor(routeCoords.length / 2);
+        let midPoint = Math.floor(routeCoords.length / 2);
         
         // التوجه للحادث
-        for (let i = 0; i < indexOfCrash; i++) {
+        for (let i = 0; i < midPoint; i++) {
             if(marker) marker.setLatLng(routeCoords[i]);
-            await new Promise(r => setTimeout(r, 600)); 
+            await new Promise(r => setTimeout(r, 100)); 
         }
         
         await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'in_progress' }).eq('id', inc.id);
         await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'en_route_hospital' }).eq('id', amb.id);
-        if(markers.incidents[inc.id] && adminMap) adminMap.removeLayer(markers.incidents[inc.id]); 
+        
+        // 🔥 تأكيد مسح الحادثة فور وصول الإسعاف
+        if(markers.incidents[inc.id]) {
+            adminMap.removeLayer(markers.incidents[inc.id]);
+            delete markers.incidents[inc.id]; 
+        }
 
         // التوجه للمستشفى
-        for (let i = indexOfCrash; i < routeCoords.length; i++) {
+        for (let i = midPoint; i < routeCoords.length; i++) {
             if(marker) marker.setLatLng(routeCoords[i]);
-            await new Promise(r => setTimeout(r, 600));
+            await new Promise(r => setTimeout(r, 100));
         }
 
         finishSimulation(amb, inc);
-    } catch (e) { console.error("Routing Error:", e); finishSimulation(amb, inc); }
+    } catch (e) { finishSimulation(amb, inc); }
 }
 
 async function finishSimulation(amb, inc) {
-    if(routes[inc.id] && adminMap) adminMap.removeLayer(routes[inc.id]); 
-    await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'available', lat: amb.lat, lng: amb.lng }).eq('id', amb.id); // إعادة التمركز لحل مشاكل الروتينج
+    if(routes[inc.id]) { adminMap.removeLayer(routes[inc.id]); delete routes[inc.id]; }
+    
+    amb.lat = amb.baseLat;
+    amb.lng = amb.baseLng;
+    
+    await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'available', lat: amb.baseLat, lng: amb.baseLng }).eq('id', amb.id); 
     await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'completed', resolved_at: new Date() }).eq('id', inc.id);
     
     await loadEntities();
     processSystemQueues(); 
 }
 
-// Helpers & UI
-function getHaversineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; const dLat = (lat2 - lat1) * Math.PI / 180; const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+function getDist(lat1, lon1, lat2, lon2) {
+    return Math.hypot(lat1 - lat2, lon1 - lon2);
 }
 
+// 🔥 دالة ذكية لإدارة ظهور الحوادث ومنعها من الظهور مجدداً إذا كانت in_progress
 function handleIncidentVisuals(inc) {
-    let icon = inc.status === 'pending' ? icons.incident_pending : icons.incident_confirmed;
+    // لو الحادثة في الطريق للمستشفى أو خلصت، امسحها فوراً ومترسمهاش تاني!
+    if (inc.status === 'in_progress' || inc.status === 'completed' || inc.status === 'canceled') {
+        if (markers.incidents[inc.id]) {
+            if (adminMap) adminMap.removeLayer(markers.incidents[inc.id]);
+            delete markers.incidents[inc.id];
+        }
+        return; 
+    }
+
+    let icon = inc.status === 'pending' ? incidentIcon : incidentIcon; // يمكن تغييرها لأيقونة أخرى لاحقاً
     if(!markers.incidents[inc.id]) {
         markers.incidents[inc.id] = L.marker([inc.latitude, inc.longitude], {icon: icon}).addTo(adminMap);
         markers.incidents[inc.id].on('click', () => openPanel('Incident', inc));
     } else {
         markers.incidents[inc.id].setIcon(icon);
-    }
-}
-
-window.toggleIncidentDetails = function(id) {
-    const detailsDiv = document.getElementById(`inc-details-${id}`);
-    const icon = document.getElementById(`inc-icon-${id}`);
-    if (detailsDiv.classList.contains('hidden')) {
-        detailsDiv.classList.remove('hidden');
-        icon.classList.replace('fa-chevron-down', 'fa-chevron-up');
-        window.focusMapEntity('Incident', id);
-    } else {
-        detailsDiv.classList.add('hidden');
-        icon.classList.replace('fa-chevron-up', 'fa-chevron-down');
+        markers.incidents[inc.id].setLatLng([inc.latitude, inc.longitude]);
     }
 }
 
 function renderIncidents() {
-    const list = document.getElementById('incidentsPanelList');
+    const list = document.getElementById('incidentsPanelList') || document.getElementById('incidentsBody');
+    if(!list) return;
     const incidents = Object.values(rawData.incidents).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    document.getElementById('pendingCountBadge').innerText = `${incidents.filter(i=>i.status==='pending').length} Pending`;
+    document.getElementById('pendingCountBadge').innerText = incidents.filter(i=>i.status==='pending').length;
     
     list.innerHTML = incidents.map(inc => {
         let isQueued = (inc.status === 'confirmed' && !inc.assigned_ambulance_id);
-        let statusColor = inc.status === 'pending' ? 'text-warning bg-warning/20' : 
-                          isQueued ? 'text-primary bg-primary/20' : 
-                          inc.status === 'in_progress' ? 'text-purple-500 bg-purple-500/20' : 'text-info bg-info/20';
-        let displayStatus = isQueued ? 'WAITING RESOURCES' : inc.status.replace('_', ' ');
-
-        let s1 = inc.status !== 'pending' ? 'text-success' : 'text-gray-400';
-        let s2 = inc.assigned_ambulance_id ? 'text-success' : 'text-gray-400';
-        let s3 = inc.status === 'in_progress' ? 'text-success' : 'text-gray-400';
-
+        let sColor = inc.status === 'pending' ? 'text-warning' : isQueued ? 'text-primary' : 'text-success';
         return `
-        <div class="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden transition-colors mb-3">
-            <div class="p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 flex justify-between items-center" onclick="toggleIncidentDetails(${inc.id})">
-                <div>
-                    <span class="text-xs font-mono font-bold ${isQueued ? 'text-primary' : 'text-gray-500'}">#INC-${inc.id}</span>
-                    <span class="text-[10px] font-bold px-2 py-0.5 rounded uppercase ${statusColor} ml-2">${displayStatus}</span>
-                </div>
-                <i id="inc-icon-${inc.id}" class="fa-solid fa-chevron-down text-gray-400 text-xs"></i>
-            </div>
-            ${inc.status === 'pending' ? `<div class="h-1 bg-gray-200 dark:bg-gray-800 w-full"><div class="h-full bg-warning transition-all duration-[10000ms] ease-linear" style="width:100%"></div></div>` : ''}
-            
-            <div id="inc-details-${inc.id}" class="hidden p-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50">
-                <div class="grid grid-cols-2 gap-2 text-xs mb-3 text-gray-600 dark:text-gray-300">
-                    <div><span class="font-bold">G-Force:</span> ${inc.g_force}</div>
-                    <div class="col-span-2"><span class="font-bold">Car:</span> ${inc.devices?.car_model || 'Unknown'} (${inc.devices?.car_plate || ''})</div>
-                </div>
-                <div class="flex items-center justify-between text-[10px] font-bold uppercase mt-2 border-t border-gray-200 dark:border-gray-700 pt-3">
-                    <div class="flex flex-col items-center ${s1}"><i class="fa-solid fa-check-circle mb-1 text-sm"></i> Confirmed</div>
-                    <div class="flex-1 h-[1px] bg-gray-300 dark:bg-gray-700 mx-2"></div>
-                    <div class="flex flex-col items-center ${s2}"><i class="fa-solid fa-truck-medical mb-1 text-sm"></i> Dispatched</div>
-                    <div class="flex-1 h-[1px] bg-gray-300 dark:bg-gray-700 mx-2"></div>
-                    <div class="flex flex-col items-center ${s3}"><i class="fa-solid fa-hospital mb-1 text-sm"></i> Hospital</div>
+        <div class="bg-gray-50 dark:bg-white/5 border border-transparent dark:border-white/10 rounded-lg p-2 mb-2 transition-colors hover:border-gray-300 dark:hover:border-gray-500">
+            <div class="flex justify-between items-center cursor-pointer" onclick="focusMapEntity('Incident', ${inc.id})">
+                <span class="text-xs font-mono font-bold text-gray-500 dark:text-gray-400">#INC-${inc.id}</span>
+                <div class="flex items-center gap-2">
+                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase bg-gray-200 dark:bg-gray-800 ${sColor}">${isQueued ? 'WAITING' : inc.status}</span>
+                    ${inc.assigned_ambulance_id ? `<i class="fa-solid fa-eye text-gray-400 hover:text-gray-800 dark:hover:text-white" onclick="toggleRoute(${inc.id}, event)" title="Toggle Route"></i>` : ''}
                 </div>
             </div>
-        </div>
-        `;
+            ${inc.status === 'pending' ? `<div class="h-0.5 bg-gray-200 dark:bg-gray-800 mt-1"><div class="h-full bg-warning transition-all duration-[10000ms] w-full" style="width:0%"></div></div>` : ''}
+        </div>`;
     }).join('');
 }
 
 function renderAmbulances() {
-    const list = document.getElementById('ambulancesPanelList');
-    list.innerHTML = Object.values(rawData.ambulances).map(a => `
-        <div onclick="window.focusMapEntity('Ambulance', ${a.id})" class="flex items-center gap-3 p-2 border-b dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
-            <div class="w-8 h-8 rounded-full ${a.status==='available'?'bg-success/20 text-success': a.status==='offline'?'bg-gray-500/20 text-gray-500':'bg-red-500/20 text-red-500'} flex items-center justify-center"><i class="fa-solid fa-truck-medical"></i></div>
-            <div class="flex-1"><h5 class="text-xs font-bold dark:text-white">${a.code}</h5><span class="text-[10px] text-gray-500 uppercase font-bold">${a.status.replace('_', ' ')}</span></div>
-        </div>
-    `).join('');
+    const list = document.getElementById('ambulancesPanelList') || document.getElementById('ambBody');
+    if(!list) return;
+    list.innerHTML = Object.values(rawData.ambulances).map(a => {
+        // ألوان الواجهة الجانبية (القائمة)
+        let baseColor = a.status === 'available' ? 'bg-success' : a.status === 'offline' ? 'bg-gray-500' : 'bg-red-500';
+        return `
+        <div onclick="focusMapEntity('Ambulance', ${a.id})" class="flex items-center gap-3 p-2 border-b border-gray-100 dark:border-white/5 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+            <div class="relative w-8 h-8 rounded-full ${baseColor} flex items-center justify-center text-white shadow-sm">
+                <i class="fa-solid fa-truck-medical text-[10px]"></i>
+                <span class="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white dark:border-gray-900" style="background-color: ${a.routeColor}"></span>
+            </div>
+            <div class="flex-1"><div class="text-xs font-bold text-gray-800 dark:text-white">${a.code}</div><div class="text-[9px] text-gray-500 uppercase">${a.status.replace('_', ' ')}</div></div>
+        </div>`;
+    }).join('');
 }
