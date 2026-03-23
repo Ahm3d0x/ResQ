@@ -92,30 +92,31 @@
                         <span class="text-xs text-success font-bold bg-success/10 px-3 py-1.5 rounded-full" id="simStatus">System Active</span>
                     </div>
                     
-                    <div id="simCanvas" class="flex-1 relative bg-gray-100/50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+<div id="simCanvas" class="flex-1 relative bg-gray-100/50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                         <div class="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:30px_30px]"></div>
                         
-                        <div class="absolute top-[20%] left-[20%] -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center border border-blue-500 z-0">
+                        <div class="absolute top-[20%] left-[20%] -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center border border-blue-500 z-10">
                             <span class="text-xl">🏥</span>
                             <span class="absolute -bottom-5 text-[10px] font-bold text-blue-500 whitespace-nowrap">City Hosp.</span>
                         </div>
 
-                        <div class="absolute top-[80%] left-[80%] -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center border border-blue-500 z-0">
+                        <div class="absolute top-[80%] left-[80%] -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center border border-blue-500 z-10">
                             <span class="text-xl">🏥</span>
                             <span class="absolute -bottom-5 text-[10px] font-bold text-blue-500 whitespace-nowrap">Central ER</span>
                         </div>
 
-                        <div id="amb_1" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-20 transition-all">
+                        <div id="trafficLayer" class="absolute inset-0 z-20 pointer-events-none"></div>
+
+                        <div id="amb_1" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-30 transition-all ease-linear">
                             <span class="text-[14px]">🚑</span><span class="absolute -top-4 text-[9px] font-bold text-gray-500 unit-label">U-1</span>
                         </div>
-                        <div id="amb_2" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-20 transition-all">
+                        <div id="amb_2" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-30 transition-all ease-linear">
                             <span class="text-[14px]">🚑</span><span class="absolute -top-4 text-[9px] font-bold text-gray-500 unit-label">U-2</span>
                         </div>
-                        <div id="amb_3" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-20 transition-all">
+                        <div id="amb_3" class="absolute w-8 h-8 bg-white dark:bg-gray-800 rounded-full shadow-xl border-2 border-gray-400 flex items-center justify-center z-30 transition-all ease-linear">
                             <span class="text-[14px]">🚑</span><span class="absolute -top-4 text-[9px] font-bold text-gray-500 unit-label">U-3</span>
                         </div>
                     </div>
-
                     <div id="simFeed" class="mt-4 bg-gray-50 dark:bg-gray-900/80 rounded-xl p-3 text-[11px] font-mono text-gray-600 dark:text-gray-400 h-24 overflow-hidden flex flex-col justify-end gap-1 border border-gray-200 dark:border-gray-800">
                         </div>
                 </div>
@@ -139,15 +140,15 @@
             </div>
         </section>
 
-<section id="howView" class="view-hidden absolute inset-0 w-full h-full flex items-center justify-center bg-[#020408] px-6 py-12 overflow-hidden">
-            <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,#1e293b_0%,transparent_70%)]"></div>
-            <div class="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+<section id="howView" class="view-hidden absolute inset-0 w-full h-full flex items-center justify-center bg-slate-50 dark:bg-[#020408] px-6 py-12 overflow-hidden transition-colors duration-500">
+            <div class="absolute inset-0 opacity-40 dark:opacity-20 bg-[radial-gradient(circle_at_center,#e2e8f0_0%,transparent_70%)] dark:bg-[radial-gradient(circle_at_center,#1e293b_0%,transparent_70%)] transition-colors duration-500"></div>
+            <div class="absolute inset-0 bg-[linear-gradient(to_right,#00000005_1px,transparent_1px),linear-gradient(to_bottom,#00000005_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:50px_50px] transition-colors duration-500"></div>
 
             <div class="w-full max-w-6xl h-full flex flex-col relative z-10">
-                <div class="mb-10 flex justify-between items-end border-b border-white/10 pb-6">
+                <div class="mb-10 flex justify-between items-end border-b border-gray-200 dark:border-white/10 pb-6 transition-colors duration-500">
                     <div>
-                        <h2 class="text-4xl md:text-5xl font-black text-white tracking-tighter uppercase italic" data-i18n="howTitle">System Protocol</h2>
-                        <p class="text-primary font-mono text-xs mt-2 tracking-[0.3em] uppercase">Autonomous Emergency Response</p>
+                        <h2 class="text-4xl md:text-5xl font-black text-secondary dark:text-white tracking-tighter uppercase italic transition-colors duration-500" data-i18n="howTitle">System Protocol</h2>
+                        <p class="text-primary font-mono text-xs mt-2 tracking-[0.3em] uppercase">Autonomous Emergency Response v4.0</p>
                     </div>
                     <div class="hidden md:block text-right font-mono text-[10px] text-gray-500">
                         LATENCY: <span class="text-success">0.002ms</span><br>
@@ -164,9 +165,9 @@
                                 <feComposite in="SourceGraphic" in2="blur" operator="over"></feComposite>
                             </filter>
                         </defs>
-                        <path id="path-0-1" d="M 150 200 C 250 200, 250 100, 350 100" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
-                        <path id="path-1-2" d="M 450 100 C 550 100, 550 300, 650 300" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
-                        <path id="path-2-3" d="M 750 300 C 850 300, 850 200, 950 200" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3" />
+                        <path id="path-0-1" d="M 150 200 C 250 200, 250 100, 350 100" fill="none" class="stroke-gray-300 dark:stroke-white/5 transition-colors duration-500" stroke-width="3" />
+                        <path id="path-1-2" d="M 450 100 C 550 100, 550 300, 650 300" fill="none" class="stroke-gray-300 dark:stroke-white/5 transition-colors duration-500" stroke-width="3" />
+                        <path id="path-2-3" d="M 750 300 C 850 300, 850 200, 950 200" fill="none" class="stroke-gray-300 dark:stroke-white/5 transition-colors duration-500" stroke-width="3" />
                         
                         <circle id="wfPulse" r="6" fill="#dc2626" filter="url(#neon-glow)" class="opacity-0">
                             <animateMotion id="wfMotion" dur="1.2s" begin="indefinite" fill="freeze"></animateMotion>
@@ -175,62 +176,62 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 w-full relative z-20">
                         
-                        <div id="step-0" class="wf-card group bg-gray-900/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 transition-all duration-500 hover:border-primary/40">
+                        <div id="step-0" class="wf-card group bg-white/60 dark:bg-gray-900/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-3xl p-6 transition-all duration-500 hover:border-primary/40">
                             <div class="h-2 w-12 bg-primary/20 rounded-full mb-6 overflow-hidden">
                                 <div class="wf-loader h-full bg-primary w-0"></div>
                             </div>
                             <div class="text-4xl mb-4 group-[.active]:scale-125 transition-transform duration-500">🚗</div>
-                            <h3 class="text-white font-bold text-lg mb-2" data-i18n="step1Title">Hardware Detection</h3>
+                            <h3 class="text-secondary dark:text-white font-bold text-lg mb-2 transition-colors duration-500" data-i18n="step1Title">Hardware Detection</h3>
                             <p class="text-gray-500 text-xs leading-relaxed" data-i18n="step1Desc">G-Force sensors detect impact instantly and send coords.</p>
                         </div>
 
-                        <div id="step-1" class="wf-card group bg-gray-900/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 transition-all duration-500 mt-0 md:-mt-20">
+                        <div id="step-1" class="wf-card group bg-white/60 dark:bg-gray-900/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-3xl p-6 transition-all duration-500 mt-0 md:-mt-20">
                             <div class="flex justify-between items-center mb-6">
                                 <div class="text-[10px] font-mono text-warning font-bold uppercase">Timer Check</div>
                                 <div class="wf-counter font-mono text-warning text-xs">10.00s</div>
                             </div>
                             <div class="text-4xl mb-4 group-[.active]:rotate-12 transition-transform">☁️</div>
-                            <h3 class="text-white font-bold text-lg mb-2" data-i18n="step2Title">10-Sec Verification</h3>
+                            <h3 class="text-secondary dark:text-white font-bold text-lg mb-2 transition-colors duration-500" data-i18n="step2Title">10-Sec Verification</h3>
                             <div class="grid grid-cols-5 gap-1 mt-4">
-                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
-                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
-                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
-                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
-                                <div class="h-1 bg-white/5 rounded-full overflow-hidden"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden transition-colors duration-500"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden transition-colors duration-500"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden transition-colors duration-500"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden transition-colors duration-500"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
+                                <div class="h-1 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden transition-colors duration-500"><div class="wf-bit h-full bg-warning w-0 transition-all"></div></div>
                             </div>
                         </div>
 
-                        <div id="step-2" class="wf-card group bg-gray-900/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 transition-all duration-500 mt-0 md:mt-20">
+                        <div id="step-2" class="wf-card group bg-white/60 dark:bg-gray-900/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-3xl p-6 transition-all duration-500 mt-0 md:mt-20">
                             <div class="relative w-full h-20 mb-4 flex items-center justify-center">
-                                <div class="absolute inset-0 bg-blue-500/5 rounded-full animate-pulse group-[.active]:block hidden"></div>
+                                <div class="absolute inset-0 bg-blue-500/10 dark:bg-blue-500/5 rounded-full animate-pulse group-[.active]:block hidden transition-colors duration-500"></div>
                                 <div class="text-4xl relative z-10 group-[.active]:animate-bounce">🚑</div>
                             </div>
-                            <h3 class="text-white font-bold text-lg mb-2" data-i18n="step3Title">Auto-Dispatch</h3>
-                            <div class="text-[10px] font-mono text-blue-400 opacity-0 group-[.active]:opacity-100 transition-opacity">SCANNING NEAREST UNIT...</div>
+                            <h3 class="text-secondary dark:text-white font-bold text-lg mb-2 transition-colors duration-500" data-i18n="step3Title">Auto-Dispatch</h3>
+                            <div class="text-[10px] font-mono text-blue-500 dark:text-blue-400 opacity-0 group-[.active]:opacity-100 transition-opacity">SCANNING NEAREST UNIT...</div>
                         </div>
 
-                        <div id="step-3" class="wf-card group bg-gray-900/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 transition-all duration-500">
+                        <div id="step-3" class="wf-card group bg-white/60 dark:bg-gray-900/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-3xl p-6 transition-all duration-500">
                             <div class="flex items-center gap-2 mb-6">
-                                <div class="flex-1 h-[1px] bg-success/20"></div>
+                                <div class="flex-1 h-[1px] bg-success/30 dark:bg-success/20 transition-colors duration-500"></div>
                                 <div class="w-2 h-2 rounded-full bg-success animate-ping"></div>
-                                <div class="flex-1 h-[1px] bg-success/20"></div>
+                                <div class="flex-1 h-[1px] bg-success/30 dark:bg-success/20 transition-colors duration-500"></div>
                             </div>
                             <div class="text-4xl mb-4 group-[.active]:drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]">🏥</div>
-                            <h3 class="text-white font-bold text-lg mb-2" data-i18n="step4Title">Hospital Alert</h3>
+                            <h3 class="text-secondary dark:text-white font-bold text-lg mb-2 transition-colors duration-500" data-i18n="step4Title">Hospital Alert</h3>
                             <p class="text-gray-500 text-xs leading-relaxed" data-i18n="step4Desc">Nearest hospital receives patient data to prepare ER instantly.</p>
                         </div>
                     </div>
                 </div>
 
-                <div class="mt-10 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center justify-between font-mono text-[11px]">
+                <div class="mt-10 bg-white/80 dark:bg-white/5 backdrop-blur-md border border-gray-200 dark:border-white/10 rounded-2xl p-4 flex items-center justify-between font-mono text-[11px] transition-colors duration-500">
                     <div class="flex items-center gap-6">
                         <div class="flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full bg-success"></span>
-                            <span class="text-gray-400 uppercase">Comm Link: Stable</span>
+                            <span class="text-gray-600 dark:text-gray-400 uppercase transition-colors duration-500">Comm Link: Stable</span>
                         </div>
-                        <div class="hidden md:flex items-center gap-2 border-l border-white/10 pl-6">
+                        <div class="hidden md:flex items-center gap-2 border-l border-gray-300 dark:border-white/10 pl-6 transition-colors duration-500">
                             <span class="text-gray-500">BUFFER:</span>
-                            <span class="text-white">0.024s</span>
+                            <span class="text-secondary dark:text-white transition-colors duration-500">0.024s</span>
                         </div>
                     </div>
                     <div id="wfLog" class="text-primary font-bold uppercase tracking-widest">Initialising ResQ Protocol...</div>

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResQ - Hardware Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { primary: '#dc2626', secondary: '#0f172a' } } }
+        }
+    </script>
+</head>
+<body class="bg-secondary text-white h-screen flex flex-col font-sans">
+
+    <header class="bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-black text-primary"><i class="fa-solid fa-microchip"></i> Hardware Simulator</h1>
+            <p class="text-xs text-gray-400">Generates real incidents in Supabase DB</p>
+        </div>
+        <div id="statusBadge" class="px-3 py-1 bg-yellow-500/20 text-yellow-500 rounded text-xs font-bold border border-yellow-500/50">
+            Connecting to Supabase...
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden">
+        
+        <div class="w-1/3 bg-gray-900 p-6 flex flex-col gap-6 border-r border-gray-800 overflow-y-auto">
+            
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <label class="block text-sm font-bold text-gray-300 mb-2">1. Select Target Device (Hardware)</label>
+                <select id="deviceSelect" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white outline-none focus:border-primary">
+                    <option value="">Loading devices...</option>
+                </select>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <label class="block text-sm font-bold text-gray-300 mb-2">2. Impact Location (Click on Map)</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="bg-gray-900 p-2 rounded border border-gray-700">
+                        <span class="text-[10px] text-gray-500 block">LATITUDE</span>
+                        <span id="latDisplay" class="font-mono text-sm text-blue-400">Not selected</span>
+                    </div>
+                    <div class="bg-gray-900 p-2 rounded border border-gray-700">
+                        <span class="text-[10px] text-gray-500 block">LONGITUDE</span>
+                        <span id="lngDisplay" class="font-mono text-sm text-blue-400">Not selected</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <label class="block text-sm font-bold text-gray-300 mb-2">3. G-Force Severity</label>
+                <select id="severitySelect" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white outline-none focus:border-primary">
+                    <option value="high">High Impact (Airbags Deployed)</option>
+                    <option value="medium">Medium Impact</option>
+                </select>
+            </div>
+
+            <button id="triggerBtn" disabled class="mt-auto w-full bg-primary text-white font-black text-lg py-4 rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-[0_0_20px_rgba(220,38,38,0.3)]">
+                🚀 SEND CRASH SIGNAL
+            </button>
+            
+            <div id="logArea" class="h-32 bg-black rounded p-2 font-mono text-[10px] text-green-400 overflow-y-auto border border-gray-800">
+                > Simulator Ready.<br>
+            </div>
+        </div>
+
+        <div id="simMap" class="w-2/3 h-full bg-black z-0"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script type="module">
+        import { supabase, DB_TABLES } from '../js/config/supabase.js';
+
+        // عناصر الواجهة
+        const deviceSelect = document.getElementById('deviceSelect');
+        const latDisplay = document.getElementById('latDisplay');
+        const lngDisplay = document.getElementById('lngDisplay');
+        const triggerBtn = document.getElementById('triggerBtn');
+        const statusBadge = document.getElementById('statusBadge');
+        const logArea = document.getElementById('logArea');
+        const severitySelect = document.getElementById('severitySelect');
+
+        let selectedLat = null;
+        let selectedLng = null;
+
+        function log(msg) {
+            logArea.innerHTML += `> ${msg}<br>`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        // 1. تهيئة الخريطة (مثال: القاهرة)
+        const map = L.map('simMap').setView([30.0444, 31.2357], 13);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        
+        let crashMarker = null;
+
+        // عند الضغط على الخريطة لتحديد موقع
+        map.on('click', function(e) {
+            selectedLat = e.latlng.lat;
+            selectedLng = e.latlng.lng;
+            
+            latDisplay.innerText = selectedLat.toFixed(5);
+            lngDisplay.innerText = selectedLng.toFixed(5);
+
+            if (crashMarker) map.removeLayer(crashMarker);
+            
+            crashMarker = L.marker([selectedLat, selectedLng], {
+                icon: L.divIcon({
+                    html: '<div class="w-6 h-6 bg-primary rounded-full border-2 border-white animate-pulse"></div>',
+                    className: ''
+                })
+            }).addTo(map);
+
+            checkReadyState();
+        });
+
+// 2. جلب الأجهزة من قاعدة البيانات
+        async function fetchDevices() {
+            try {
+                // استخدمنا car_model بدل vehicle_model لتطابق قاعدة البيانات
+                const { data, error } = await supabase.from(DB_TABLES.DEVICES).select('id, device_uid, car_model');
+                if (error) throw error;
+
+                if (data.length === 0) {
+                    deviceSelect.innerHTML = '<option value="">No devices found in DB</option>';
+                    statusBadge.className = "px-3 py-1 bg-red-500/20 text-red-500 rounded text-xs font-bold border border-red-500/50";
+                    statusBadge.innerText = "DB Empty!";
+                    return;
+                }
+
+                deviceSelect.innerHTML = '<option value="">-- Choose a Device --</option>';
+                data.forEach(dev => {
+                    // عرض الـ car_model في القائمة المنسدلة
+                    deviceSelect.innerHTML += `<option value="${dev.id}">${dev.device_uid} (${dev.car_model})</option>`;
+                });
+
+                statusBadge.className = "px-3 py-1 bg-green-500/20 text-green-500 rounded text-xs font-bold border border-green-500/50";
+                statusBadge.innerText = "Connected & Ready";
+                log("Devices loaded successfully.");
+
+            } catch (error) {
+                log("Error loading devices: " + error.message);
+            }
+        }
+        // 3. تفعيل الزر فقط عند اختيار جهاز ومكان
+        function checkReadyState() {
+            if (deviceSelect.value && selectedLat && selectedLng) {
+                triggerBtn.disabled = false;
+            } else {
+                triggerBtn.disabled = true;
+            }
+        }
+        deviceSelect.addEventListener('change', checkReadyState);
+
+// 4. الإرسال الصحيح والمتكامل للداتا بيز
+        triggerBtn.addEventListener('click', async () => {
+            const deviceId = deviceSelect.value;
+            triggerBtn.disabled = true;
+            triggerBtn.innerText = "SENDING...";
+
+            try {
+                log(`1. Generating Hardware Request...`);
+                // أ. إنشاء طلب هاردوير أولاً
+                const payload = JSON.stringify({ sensor: "G-Force", value: severitySelect.value === 'high' ? 9.5 : 4.5, trigger: "auto" });
+                const { data: hwReq, error: hwErr } = await supabase.from('hardware_requests').insert([
+                    { device_id: deviceId, lat: selectedLat, lng: selectedLng, request_type: 'alert', raw_payload: payload }
+                ]).select().single();
+                if (hwErr) throw hwErr;
+
+                log(`2. Registering Incident...`);
+                // ب. إنشاء الحادث وربطه بطلب الهاردوير
+                const { data: incident, error: incErr } = await supabase.from(DB_TABLES.INCIDENTS).insert([
+                    {
+                        device_id: deviceId,
+                        hardware_request_id: hwReq.id,
+                        latitude: selectedLat,
+                        longitude: selectedLng,
+                        status: 'pending',
+                        g_force: severitySelect.value === 'high' ? 9.5 : 4.5
+                    }
+                ]).select().single();
+                if (incErr) throw incErr;
+
+                log(`3. Writing System Logs...`);
+                // ج. تسجيل العملية في الـ Logs
+                await supabase.from('incident_logs').insert([
+                    { incident_id: incident.id, action: 'created', performed_by: 'device:' + deviceId, note: 'Initial crash detected' }
+                ]);
+
+                // د. تحديث الـ hardware_request برقم الحادث لغلق الدائرة
+                await supabase.from('hardware_requests').update({ incident_id: incident.id }).eq('id', hwReq.id);
+
+                log(`✅ SUCCESS! Incident #${incident.id} created cleanly.`);
+                alert("Crash signal sent & logged completely!");
+
+            } catch (error) {
+                log(`❌ ERROR: ${error.message}`);
+            } finally {
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = "🚀 SEND CRASH SIGNAL";
+            }
+        });
+        // التشغيل
+        fetchDevices();
+    </script>
+</body>
+</html>
