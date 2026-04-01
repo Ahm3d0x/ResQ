@@ -42,6 +42,7 @@
             <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-bold transition-colors" data-module="users"><i class="fa-solid fa-users w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navUsers">Users</span></a>
             <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-bold transition-colors" data-module="hospitals"><i class="fa-solid fa-hospital w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navHospitals">Hospitals</span></a>
             <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-bold transition-colors" data-module="ambulances"><i class="fa-solid fa-truck-medical w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navAmbulances">Ambulances</span></a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-bold transition-colors" data-module="devices"><i class="fa-solid fa-microchip w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navDevices">Devices</span></a>
         </nav>
     </aside>
 
@@ -59,8 +60,21 @@
 
         <main class="flex-1 p-4 overflow-hidden relative">
             
-            <div id="module-dashboard" class="h-full flex gap-4 w-full transition-opacity duration-300">
-                <div id="mapContainer" class="flex-1 bg-gray-900 rounded-2xl overflow-hidden relative shadow-lg transition-all duration-500"><div id="adminMap" class="w-full h-full bg-[#1a1a2e]"></div></div>
+<div id="module-dashboard" class="h-full flex gap-4 w-full transition-opacity duration-300">
+                
+                <div id="mapContainer" class="flex-1 bg-gray-900 rounded-2xl overflow-hidden relative shadow-lg transition-all duration-500">
+                    <div id="adminMap" class="w-full h-full bg-[#1a1a2e]"></div>
+                    
+                    <div class="absolute top-4 left-4 rtl:right-4 rtl:left-auto z-[400] flex flex-col gap-2 pointer-events-none">
+                        <button id="toggleTrafficBtn" class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white px-3 py-2 rounded-xl border border-white/10 hover:bg-gray-800 text-xs font-bold shadow-lg transition-all flex items-center gap-2">
+                            <span class="text-base">🚦</span> <span data-i18n="btnTraffic">Traffic</span>
+                        </button>
+                        <button id="toggleHeatmapBtn" class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white px-3 py-2 rounded-xl border border-white/10 hover:bg-gray-800 text-xs font-bold shadow-lg transition-all flex items-center gap-2">
+                            <span class="text-base">🔥</span> <span data-i18n="btnHeatmap">Heatmap</span>
+                        </button>
+                    </div>
+                </div>
+                
                 <div id="rightSidebar" class="w-96 flex flex-col gap-4 overflow-y-auto h-full ltr:pr-1 rtl:pl-1 pb-4 transition-all duration-500 flex-shrink-0">
                     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg flex flex-col flex-shrink-0 transition-all duration-300" style="max-height: 50vh;">
                         <div class="p-3 border-b dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5 cursor-pointer sticky top-0 z-10" onclick="toggleSection('incidentsBody', 'incIcon')"><h3 class="font-bold text-sm dark:text-white"><i class="fa-solid fa-triangle-exclamation text-primary ltr:mr-2 rtl:ml-2"></i> <span data-i18n="dashIncidents">Incidents</span></h3><div class="flex items-center gap-3"><span id="pendingCountBadge" class="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full font-bold">0</span><i id="incIcon" class="fa-solid fa-chevron-up text-gray-400"></i></div></div>
@@ -199,7 +213,45 @@
                     </div>
                 </div>
             </div>
+<div id="module-devices" class="hidden h-full flex flex-col gap-4 animate-fade-in w-full">
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl p-4 shadow-lg flex flex-col lg:flex-row justify-between items-center gap-4">
+                    <div class="flex-shrink-0">
+                        <h2 class="text-xl font-black text-secondary dark:text-white"><i class="fa-solid fa-microchip text-blue-500 ltr:mr-2 rtl:ml-2"></i> <span data-i18n="devTitle">Devices Management</span></h2>
+                        <p class="text-xs text-gray-500" data-i18n="devDesc">Manage hardware crash-detection units, assign owners, and track status.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
+                        <button onclick="openDevMapFilterModal()" id="devMapFilterBtnActive" class="bg-blue-600/20 text-blue-500 border border-blue-500/50 hover:bg-blue-600 hover:text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-2"><i class="fa-solid fa-map-location-dot"></i> <span data-i18n="mapFilter">Map Filter</span></button>
+                        <div class="relative">
+                            <i class="fa-solid fa-search absolute ltr:left-3 rtl:right-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" id="devSearchInput" data-i18n-placeholder="searchDevice" placeholder="Search UID, Owner, Car Plate..." class="ltr:pl-9 rtl:pr-9 ltr:pr-4 rtl:pl-4 py-2 bg-gray-100 dark:bg-gray-800 border-none rounded-xl text-sm dark:text-white outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-56 transition-all">
+                        </div>
+                        <select id="devStatusFilter" class="bg-gray-100 dark:bg-gray-800 border-none rounded-xl p-2 text-sm text-gray-600 dark:text-gray-300 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                            <option value="" data-i18n="allStatus">All Status</option>
+                            <option value="active" data-i18n="active">Active</option>
+                            <option value="inactive" data-i18n="suspended">Inactive</option>
+                        </select>
+                        <button onclick="openDeviceModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2"><i class="fa-solid fa-plus"></i> <span data-i18n="addDevice">Add Device</span></button>
+                    </div>
+                </div>
+                <div class="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg overflow-hidden flex flex-col">
+                    <div class="overflow-x-auto flex-1">
+                        <table class="w-full text-left rtl:text-right text-sm text-gray-600 dark:text-gray-300">
+                            <thead class="bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-200 sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <th class="p-4 font-bold" data-i18n="colDeviceUid">Device UID</th>
+                                    <th class="p-4 font-bold" data-i18n="colOwner">Owner Info</th>
+                                    <th class="p-4 font-bold" data-i18n="colCarInfo">Car Details</th>
+                                    <th class="p-4 font-bold text-center" data-i18n="colStatus">Status</th>
+                                    <th class="p-4 font-bold text-center" data-i18n="colActions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="devicesTableBody" class="divide-y divide-gray-100 dark:divide-white/5"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
+        
         </main>
     </div>
 
@@ -405,9 +457,119 @@
             </div>
         </div>
     </div>
+    <div id="deviceModal" class="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
+                <div class="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-2xl shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
+                    <div class="p-4 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5 flex-shrink-0">
+                        <h3 id="deviceModalTitle" class="font-black text-lg dark:text-white" data-i18n="modalAddDevTitle">Add New Device</h3>
+                        <button type="button" onclick="closeDetailsModal('deviceModal')" class="text-gray-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <div class="overflow-y-auto p-5">
+                        <form id="deviceForm" class="space-y-4 text-left rtl:text-right">
+                            <input type="hidden" id="devId">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="col-span-2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1" data-i18n="lblDeviceUid">Hardware UID</label>
+                                    <input type="text" id="devUid" required class="w-full bg-gray-100 dark:bg-gray-800 border-none rounded-lg p-2.5 text-sm dark:text-white font-mono outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-xs font-bold text-gray-500 mb-1" data-i18n="lblAssignUser">Assign to User</label>
+                                    <select id="devUserId" required class="w-full bg-gray-100 dark:bg-gray-800 border-none rounded-lg p-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"></select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 mb-1" data-i18n="lblCarModel">Car Model & Year</label>
+                                    <input type="text" id="devCarModel" required placeholder="e.g., Toyota Corolla 2022" class="w-full bg-gray-100 dark:bg-gray-800 border-none rounded-lg p-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 mb-1" data-i18n="lblCarPlate">License Plate</label>
+                                    <input type="text" id="devCarPlate" required class="w-full bg-gray-100 dark:bg-gray-800 border-none rounded-lg p-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-blue-500 uppercase font-bold">
+                                </div>
+                            </div>
+                            
+                            <div class="mt-4 border-t border-gray-200 dark:border-white/10 pt-4">
+                                <label class="block text-xs font-bold text-gray-500 mb-2"><i class="fa-solid fa-map-pin text-blue-500 ltr:mr-1 rtl:ml-1"></i> <span data-i18n="lblPinLocation">Pin Initial Location</span></label>
+                                <div id="devicePickerMap" class="w-full h-48 rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-gray-200 shadow-inner z-0"></div>
+                                <div class="flex gap-4 mt-2">
+                                    <div class="flex-1 flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-2"><span class="text-[10px] text-gray-400 w-8">LAT</span><input type="text" id="devLat" readonly class="bg-transparent text-xs font-mono dark:text-white outline-none w-full"></div>
+                                    <div class="flex-1 flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-2"><span class="text-[10px] text-gray-400 w-8">LNG</span><input type="text" id="devLng" readonly class="bg-transparent text-xs font-mono dark:text-white outline-none w-full"></div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="p-4 border-t border-gray-200 dark:border-white/10 flex justify-end gap-3 bg-gray-50 dark:bg-white/5 flex-shrink-0">
+                        <button type="button" onclick="closeDetailsModal('deviceModal')" class="px-4 py-2 text-sm font-bold text-gray-500 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg transition-colors" data-i18n="btnCancel">Cancel</button>
+                        <button type="submit" form="deviceForm" id="saveDevBtn" class="px-6 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors" data-i18n="btnSaveDevice">Save Device</button>
+                    </div>
+                </div>
+            </div>
 
+            <div id="viewDeviceDetailsModal" class="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
+                <div class="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div class="p-4 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5">
+                        <h3 class="font-black text-lg dark:text-white"><i class="fa-solid fa-microchip text-blue-500 ltr:mr-2 rtl:ml-2"></i> <span data-i18n="modalViewDevTitle">Device Profile</span></h3>
+                        <button type="button" onclick="closeDetailsModal('viewDeviceDetailsModal')" class="text-gray-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <div class="p-6 space-y-4 text-sm text-left rtl:text-right" id="viewDeviceDetailsContent"></div>
+                    <div class="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 flex justify-end">
+                        <button type="button" onclick="closeDetailsModal('viewDeviceDetailsModal')" class="px-6 py-2 text-sm font-bold bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg transition-colors" data-i18n="btnClose">Close</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="devMapFilterModal" class="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
+                <div class="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-2xl shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden border border-gray-200 dark:border-gray-700 flex flex-col">
+                    <div class="p-4 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-blue-50 dark:bg-blue-900/20">
+                        <h3 class="font-black text-lg text-blue-700 dark:text-blue-400"><i class="fa-solid fa-crosshairs ltr:mr-2 rtl:ml-2"></i> <span data-i18n="modalDevFilterTitle">Geographic Devices Filter</span></h3>
+                        <button type="button" onclick="closeDetailsModal('devMapFilterModal')" class="text-gray-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <div class="p-4 text-left rtl:text-right">
+                        <p class="text-xs text-gray-500 mb-3" data-i18n="lblFilterDescDev">Click on the map to set a center point, then adjust the radius to find active devices within that zone.</p>
+                        <div id="devFilterMapArea" class="w-full h-64 rounded-xl border-2 border-gray-300 dark:border-gray-600 z-0 mb-4"></div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-1"><span data-i18n="lblSearchRadius">Search Radius:</span> <span id="devRadiusDisplay" class="text-blue-500 text-sm ltr:ml-1 rtl:mr-1">5 km</span></label>
+                            <input type="range" id="devMapRadiusSlider" min="1" max="50" value="5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-blue-500">
+                        </div>
+                    </div>
+                    <div class="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 flex justify-between">
+                        <button type="button" onclick="clearDevMapFilter()" class="px-4 py-2 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors" data-i18n="btnClearFilter">Clear Filter</button>
+                        <button type="button" onclick="applyDevMapFilter()" class="px-6 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors" data-i18n="btnApplyFilter">Apply Filter</button>
+                    </div>
+                </div>
+            </div>
+            <div id="customConfirmModal" class="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
+        <div class="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden border border-gray-200 dark:border-gray-700">
+            <div class="p-6 text-center">
+                <div class="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full mx-auto flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-triangle-exclamation text-3xl text-red-600 dark:text-red-500 animate-pulse"></i>
+                </div>
+                <h3 class="text-xl font-black text-gray-800 dark:text-white mb-2" id="confirmTitle" data-i18n="confirmTitle">Are you sure?</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6" id="confirmMessage" data-i18n="confirmMessage">This action cannot be undone.</p>
+                <div class="flex justify-center gap-3">
+                    <button onclick="closeConfirmModal()" class="px-5 py-2.5 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-white font-bold rounded-xl transition-colors hover:bg-gray-300 dark:hover:bg-gray-700" data-i18n="btnCancel">Cancel</button>
+                    <button id="confirmActionBtn" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors shadow-lg"><i class="fa-solid fa-trash ltr:mr-2 rtl:ml-2"></i> <span data-i18n="delete">Delete</span></button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
+        // نظام نافذة التأكيد المخصصة (بديل confirm المتصفح)
+        window.openConfirmModal = function(title, message, onConfirm) {
+            document.getElementById('confirmTitle').innerText = title;
+            document.getElementById('confirmMessage').innerText = message;
+            const btn = document.getElementById('confirmActionBtn');
+            btn.onclick = () => { closeConfirmModal(); onConfirm(); };
+            
+            const m = document.getElementById('customConfirmModal');
+            m.classList.remove('hidden');
+            setTimeout(() => { m.classList.remove('opacity-0'); m.children[0].classList.remove('scale-95'); }, 10);
+        };
+        
+        window.closeConfirmModal = function() {
+            const m = document.getElementById('customConfirmModal');
+            m.classList.add('opacity-0'); m.children[0].classList.add('scale-95');
+            setTimeout(() => { m.classList.add('hidden'); }, 300);
+        };
+
         // 🚀 نظام الإشعارات المنبثقة (Toast System)
         window.showToast = function(message, type = 'success') {
             const container = document.getElementById('toastContainer');
@@ -499,6 +661,7 @@
     <script type="module" src="../js/admin/users.js"></script>
     <script type="module" src="../js/admin/hospitals.js"></script>
     <script type="module" src="../js/admin/ambulances.js"></script>
+    <script type="module" src="../js/admin/devices.js"></script>
     <script type="module" src="../js/admin/main.js"></script>
 </body>
 </html>

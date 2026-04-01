@@ -8,14 +8,27 @@ const ROUTE_COLORS = ['#3b82f6', '#f59e0b', '#a855f7', '#ec4899', '#06b6d4', '#1
 const FIXED_ZONES = [ { lat: 30.0444, lng: 31.2357 }, { lat: 30.0600, lng: 31.3300 }, { lat: 29.9600, lng: 31.2500 }, { lat: 30.0500, lng: 31.1800 } ];
 
 export async function initDashboard() {
-    // تهيئة محرك الخريطة وإعطائه وظيفة فتح الكروت
     MapEngine.init('adminMap', 30.0444, 31.2357, (type, data) => openPanel(type, data));
     
     await loadEntities();
     await loadDevices();
     setupRealtime();
     setupDeviceSearch();
-    setInterval(processSystemQueues, 8000); // طابور التوجيه الذكي
+    setInterval(processSystemQueues, 8000);
+
+    // 🌟 تفعيل أزرار الزحام المروري والخريطة الحرارية 🌟
+    document.getElementById('toggleTrafficBtn')?.addEventListener('click', function() {
+        MapEngine.toggleTraffic();
+        this.classList.toggle('bg-red-600/90');
+        this.classList.toggle('border-red-500');
+    });
+
+    document.getElementById('toggleHeatmapBtn')?.addEventListener('click', async function() {
+        const { data } = await supabase.from(DB_TABLES.INCIDENTS).select('latitude, longitude');
+        MapEngine.toggleHeatmap(data || []);
+        this.classList.toggle('bg-orange-600/90');
+        this.classList.toggle('border-orange-500');
+    });
 
     window.addEventListener('languageChanged', () => {
         renderIncidents();
@@ -54,24 +67,30 @@ async function loadEntities() {
 async function loadDevices() {
     const { data: dData } = await supabase.from(DB_TABLES.DEVICES).select('*, users(name, phone)');
     dData?.forEach((d) => {
-        let lat = 30.04 + (Math.random() - 0.5) * 0.1;
-        let lng = 31.23 + (Math.random() - 0.5) * 0.1;
+        let lat = d.lat || (30.0444 + (Math.random() - 0.5) * 0.1);
+        let lng = d.lng || (31.2357 + (Math.random() - 0.5) * 0.1);
         rawData.devices[d.id] = { ...d, lat, lng };
-        MapEngine.updateCar(d.id, lat, lng, rawData.devices[d.id]);
+        
+        MapEngine.updateCar(d.id, lat, lng, rawData.devices[d.id], async (newLat, newLng) => {
+            try {
+                await supabase.from(DB_TABLES.DEVICES).update({ lat: newLat, lng: newLng }).eq('id', d.id);
+                if (rawData.devices[d.id]) {
+                    rawData.devices[d.id].lat = newLat;
+                    rawData.devices[d.id].lng = newLng;
+                }
+            } catch(e) {}
+        });
     });
     renderDevices(Object.values(rawData.devices));
 }
 
-// ==========================================
-// التوجيه الذكي (AI Dispatch) المربوط بمحرك الخريطة
-// ==========================================
 function setupRealtime() {
     supabase.channel('dispatch_chan').on('postgres_changes', { event: '*', schema: 'public', table: DB_TABLES.INCIDENTS }, async p => {
         await loadEntities();
         if(p.eventType === 'INSERT') {
             const inc = rawData.incidents[p.new.id];
             if(inc && window.showToast) window.showToast(`New Incident Detected! (#INC-${inc.id})`, 'error');
-            setTimeout(() => attemptDispatch(inc), 10000); // 10 ثواني سماحية
+            setTimeout(() => attemptDispatch(inc), 10000);
         }
     }).subscribe();
 }
@@ -101,12 +120,11 @@ async function attemptDispatch(inc) {
     if(window.showToast) window.showToast(`Dispatched Unit ${nearestAmb.code}`, 'success');
     await loadEntities();
 
-    // تشغيل المحاكاة في محرك الخريطة المستقل
     MapEngine.executeDispatch(nearestAmb, currInc, nearestHosp, async (stage) => {
         if (stage === 'reached_incident') {
             await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'in_progress' }).eq('id', currInc.id);
             await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'en_route_hospital' }).eq('id', nearestAmb.id);
-            MapEngine.updateIncident(currInc.id, 0, 0, 'in_progress', null); // إخفاء الماركر
+            MapEngine.updateIncident(currInc.id, 0, 0, 'in_progress', null); 
         } else if (stage === 'completed') {
             await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'available', lat: nearestAmb.baseLat, lng: nearestAmb.baseLng }).eq('id', nearestAmb.id); 
             await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'completed', resolved_at: new Date() }).eq('id', currInc.id);
@@ -126,7 +144,7 @@ async function processSystemQueues() {
 function getDist(lat1, lon1, lat2, lon2) { return Math.hypot(lat1 - lat2, lon1 - lon2); }
 
 // ==========================================
-// واجهة المستخدم (UI) والكروت
+// واجهة المستخدم (UI) والكروت 
 // ==========================================
 window.focusMapEntity = function(type, id) {
     let data = type === 'Incident' ? rawData.incidents[id] : type === 'Ambulance' ? rawData.ambulances[id] : rawData.devices[id];
@@ -147,24 +165,44 @@ function openPanel(type, data) {
     let translatedType = type === 'Incident' ? t('dashIncidents') : type === 'Ambulance' ? t('navAmbulances') : type === 'Device' ? t('dashDevices') : t('navHospitals');
     document.getElementById('panelTitle').innerHTML = `<span class="${type==='Incident'?'text-primary':type==='Ambulance'?'text-success':type==='Device'?'text-blue-500':'text-gray-200'}">${translatedType} ${t('panelDetailsTitle')}</span>`;
     
+    let liveLat, liveLng;
+    if (type === 'Ambulance') {
+        let m = MapEngine.markers.ambulances[data.id];
+        let pos = m ? m.getLatLng() : null;
+        liveLat = pos ? pos.lat : (data.lat || data.baseLat);
+        liveLng = pos ? pos.lng : (data.lng || data.baseLng);
+    } else if (type === 'Device') {
+        let m = MapEngine.markers.devices[data.id];
+        let pos = m ? m.getLatLng() : null;
+        liveLat = pos ? pos.lat : data.lat;
+        liveLng = pos ? pos.lng : data.lng;
+    } else {
+        liveLat = data.latitude || data.lat;
+        liveLng = data.longitude || data.lng;
+    }
+
+    MapEngine.map.flyTo([liveLat, liveLng], type === 'Device' ? 16 : 15, {animate:true});
+    
     if (type === 'Incident') {
-        MapEngine.map.flyTo([data.latitude, data.longitude], 15, {animate:true});
         document.getElementById('panelContent').innerHTML = `
             <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>${t('status')}</span><span class="text-primary font-bold uppercase">${data.status}</span></div>
             <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>${t('gForce') || 'G-Force'}</span><span class="font-mono text-red-500">${data.g_force} G</span></div>
             <div class="flex justify-between text-xs text-gray-400 mt-2"><span>${data.devices?.car_model || ''}</span><span>${data.devices?.device_uid}</span></div>`;
     } else if (type === 'Ambulance') {
-        MapEngine.map.flyTo([data.lat || data.baseLat, data.lng || data.baseLng], 15, {animate:true});
         document.getElementById('panelContent').innerHTML = `
             <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>${t('unitCode')}</span><span class="font-bold text-gray-800 dark:text-white uppercase">${data.code}</span></div>
             <div class="flex justify-between"><span>${t('status')}</span><span class="uppercase font-bold ${data.status==='available'?'text-success':'text-red-500'}">${data.status.replace('_', ' ')}</span></div>`;
     } else if (type === 'Device') {
-        MapEngine.map.flyTo([data.lat, data.lng], 16, {animate:true});
         document.getElementById('panelContent').innerHTML = `
             <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>${t('ownerName') || 'Owner'}</span><span class="font-bold text-gray-800 dark:text-white">${data.users?.name || 'N/A'}</span></div>
             <div class="flex justify-between border-b dark:border-white/10 pb-2"><span>${t('phone')}</span><span class="font-mono text-gray-600 dark:text-gray-300">${data.users?.phone || 'N/A'}</span></div>
             <div class="flex justify-between text-xs mt-2"><span>${data.car_model || ''}</span><span class="text-gray-500">${data.car_plate || ''}</span></div>
             <div class="text-center mt-3 text-[10px] text-gray-400 font-mono">${data.device_uid}</div>`;
+    } else if (type === 'Hospital') {
+        document.getElementById('panelContent').innerHTML = `
+            <div class="flex justify-between border-b dark:border-white/10 pb-2 font-bold text-gray-800 dark:text-white"><span>${data.name}</span></div>
+            <div class="flex justify-between"><span>${t('availBeds')}</span><span class="text-xl font-black text-blue-500">${data.available_beds}</span></div>
+        `;
     }
 }
 
@@ -207,7 +245,7 @@ function renderAmbulances() {
 }
 
 function setupDeviceSearch() {
-    document.getElementById('deviceSearchInput')?.addEventListener('keyup', (e) => {
+    document.getElementById('deviceSearchInputMap')?.addEventListener('keyup', (e) => {
         const val = e.target.value.toLowerCase();
         renderDevices(Object.values(rawData.devices).filter(d => d.device_uid.toLowerCase().includes(val) || (d.users && d.users.name.toLowerCase().includes(val))));
     });
