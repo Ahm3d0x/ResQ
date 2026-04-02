@@ -90,6 +90,9 @@ export const translations = {
         confirmMessage: "This action cannot be undone.",
         btnTraffic: "Live Traffic",
         btnHeatmap: "Incident Heatmap",
+        notifications: "Notifications",
+        noNotifs: "No new notifications",
+        logout: "Logout",
         // --- Ambulances Module ---
         ambTitle: "Fleet Management",
         ambDesc: "Manage ambulance units, drivers, and dispatch base zones.",
@@ -98,7 +101,19 @@ export const translations = {
         mapFilter: "Map Filter",
         unitCode: "Unit Code",
         assignedDriver: "Assigned Driver",
-        baseZone: "Base Zone"
+        baseZone: "Base Zone",
+        // --- Logs Module ---
+        navLogs: "System Logs",
+        logsTitle: "Audit & Activity Logs",
+        logsDesc: "Track all administrative actions, updates, and deletions.",
+        searchLogs: "Search admin name, notes...",
+        allActions: "All Actions",
+        allTables: "All Modules",
+        colDate: "Date & Time",
+        colAdmin: "Admin",
+        colAction: "Action",
+        colTarget: "Target Module",
+        colNote: "Details / Note",
     },
     ar: {
         // --- Shared & General ---
@@ -188,6 +203,9 @@ export const translations = {
         confirmMessage: "هذا الإجراء لا يمكن التراجع عنه.",
         btnTraffic: "الزحام المروري",
         btnHeatmap: "الخريطة الحرارية",
+        notifications: "الإشعارات الحية",
+        noNotifs: "لا توجد إشعارات جديدة",
+        logout: "تسجيل الخروج",
         // --- Ambulances Module ---
         ambTitle: "إدارة الأسطول",
         ambDesc: "إدارة سيارات الإسعاف، السائقين، ونقاط التمركز.",
@@ -196,7 +214,20 @@ export const translations = {
         mapFilter: "فلتر الخريطة",
         unitCode: "كود السيارة",
         assignedDriver: "السائق المعين",
-        baseZone: "نقطة التمركز"
+        baseZone: "نقطة التمركز",
+        // --- Logs Module ---
+        navLogs: "سجل العمليات",
+        logsTitle: "سجل نشاطات النظام",
+        logsDesc: "تتبع جميع الإجراءات الإدارية، التحديثات، وعمليات الحذف.",
+        searchLogs: "بحث باسم المدير، تفاصيل...",
+        allActions: "كل الإجراءات",
+        allTables: "كل الوحدات",
+        colDate: "التاريخ والوقت",
+        colAdmin: "المدير (المسؤول)",
+        colAction: "الإجراء",
+        colTarget: "الوحدة المستهدفة",
+        colNote: "التفاصيل / ملاحظات",
+
     }
 };
 

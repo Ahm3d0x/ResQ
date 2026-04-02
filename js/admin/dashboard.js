@@ -89,10 +89,43 @@ function setupRealtime() {
         await loadEntities();
         if(p.eventType === 'INSERT') {
             const inc = rawData.incidents[p.new.id];
-            if(inc && window.showToast) window.showToast(`New Incident Detected! (#INC-${inc.id})`, 'error');
+            if(inc) {
+                if(window.showToast) window.showToast(`New Incident Detected! (#INC-${inc.id})`, 'error');
+                addLiveNotification(inc); // 🔔 إضافة الإشعار للجرس
+            }
             setTimeout(() => attemptDispatch(inc), 10000);
         }
     }).subscribe();
+}
+
+// دالة جديدة لتوليد الإشعار داخل الجرس
+function addLiveNotification(inc) {
+    const list = document.getElementById('notifList');
+    const badge = document.getElementById('notifBadge');
+    const noMsg = document.getElementById('noNotifsMsg');
+    if(!list || !badge) return;
+
+    if (noMsg) noMsg.style.display = 'none'; // إخفاء رسالة "لا توجد إشعارات"
+
+    const timeStr = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    const notifHtml = `
+        <div class="p-3 bg-red-50 dark:bg-red-500/10 rounded-xl border border-red-100 dark:border-red-500/20 cursor-pointer hover:bg-red-100 dark:hover:bg-red-500/20 transition-all transform hover:scale-[1.02]" onclick="focusMapEntity('Incident', ${inc.id}); document.getElementById('notifDropdown').classList.add('opacity-0', 'pointer-events-none');">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-bold text-primary"><i class="fa-solid fa-triangle-exclamation ltr:mr-1 rtl:ml-1"></i> New Alert #INC-${inc.id}</span>
+                <span class="text-[10px] text-gray-500 font-mono">${timeStr}</span>
+            </div>
+            <div class="text-[10px] text-gray-600 dark:text-gray-300">High G-Force impact detected. Dispatching unit soon.</div>
+        </div>
+    `;
+    
+    list.insertAdjacentHTML('afterbegin', notifHtml);
+    
+    // تحديث رقم الـ Badge وجعله ينبض
+    let currentCount = parseInt(badge.innerText) || 0;
+    badge.innerText = currentCount + 1;
+    badge.classList.remove('hidden');
+    badge.classList.add('scale-125');
+    setTimeout(() => badge.classList.remove('scale-125'), 300);
 }
 
 async function attemptDispatch(inc) {
