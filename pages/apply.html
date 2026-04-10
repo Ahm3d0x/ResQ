@@ -16,8 +16,12 @@
     <div id="toastContainer" class="fixed top-5 left-1/2 transform -translate-x-1/2 z-[9999] flex flex-col gap-3 pointer-events-none"></div>
 
     <nav class="w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-white/10 p-4 flex justify-between items-center sticky top-0 z-50">
-        <a href="../index.html" class="flex items-center gap-2 font-black text-2xl text-primary">
-            <i class="fa-solid fa-truck-medical"></i> <span data-i18n="logo">EnQaZ</span>
+                <a href="../index.html" class="flex items-center group">
+            <img src="../assets/images/logoL.png" alt="EnQaZ Logo" 
+                 class="h-16 sm:h-18  w-auto border-2 border-gray-400 rounded-lg object-contain block dark:hidden transition-transform duration-300 group-hover:scale-105 drop-shadow-md">
+            
+            <img src="../assets/images/logoD.png" alt="EnQaZ Logo" 
+                 class="h-16 sm:h-18  w-auto border-2 border-gray-500 rounded-lg object-contain hidden dark:block transition-transform duration-300 group-hover:scale-105 drop-shadow-md">
         </a>
         <div class="flex items-center gap-4">
             <button id="themeToggleBtn" class="text-xl hover:scale-110 transition-transform"><span id="themeIcon">🌙</span></button>

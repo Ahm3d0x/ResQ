@@ -5,7 +5,7 @@ export const translations = {
     en: {
         // --- Shared & General ---
         langBtn: "العربية",
-        logo: "ResQ",
+        logo: "EnQaZ",
         loading: "Loading...",
         processing: "Processing...",
         save: "Save",
@@ -17,6 +17,30 @@ export const translations = {
         status: "Status",
         actions: "Actions",
 
+        navHome: "Home",
+        navApply: "Apply for Device",
+        navTrack: "Track Patient",
+        navHow: "How it Works",
+        navLogin: "Login Portal",
+        
+        liveBadge: "Intelligent Ambulance Dispatch Active",
+        mainHeroTitle: "Every Second <br> <span class=\"text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-primary\">Counts.</span>",
+        mainHeroDesc: "ResQ platform automates accident detection, instantly verifying incidents and dispatching the nearest ambulance.",
+        btnTrack: "Track Patient Status",
+        
+        simTitle: "Live Coordination Map",
+        
+        searchTitle: "Track Patient Status",
+        searchDesc: "Enter the unique Device UID to check the real-time status and destination hospital of the patient.",
+        deviceUid: "Device UID",
+        btnSearch: "Search Database",
+        
+        howTitle: "System Protocol",
+        step1Title: "Hardware Detection",
+        step1Desc: "G-Force sensors detect impact instantly and send coords.",
+        step2Title: "10-Sec Verification",
+        step3Title: "Auto-Dispatch",
+        step4Title: "Hospital Alert",
         // --- Admin Global UI ---
         desktopOnly: "Desktop & Tablet Only",
         desktopOnlyDesc: "Command Center requires a larger screen for real-time map telemetry.",
@@ -140,6 +164,18 @@ export const translations = {
         stepArrived: "Ambulance Reached Site",
         stepHospital: "Arrived at Hospital",
         stepResolved: "Medical Case Closed",
+        sysInit: "System Initialized. Scanning area...",
+crashDetected: "CRASH DETECTED: Civilian Vehicle #",
+dispatching: "Dispatching",
+toCrashSite: "to crash site...",
+securingPatient: "securing patient...",
+routingTo: "routing to",
+droppedPatient: "dropped patient. Resuming patrol.",
+wfComplete: "PROTOCOL COMPLETE. RESTARTING...",
+wfImpact: "IMPACT DETECTED. CAPTURING TELEMETRY...",
+wfUplink: "UPLINK ESTABLISHED. VERIFYING SIGNAL...",
+wfAnalysing: "ANALYSING GPS MATRIX. DISPATCHING UNIT...",
+wfHospital: "HOSPITAL HANDSHAKE SUCCESSFUL. PREPARING ER.",
     },
     ar: {
         // --- Shared & General ---
@@ -155,7 +191,32 @@ export const translations = {
         view: "عرض",
         status: "الحالة",
         actions: "الإجراءات",
-
+        logo: "إنقاذ",
+        navHome: "الرئيسية",
+        navApply: "طلب جهاز",
+        navTrack: "تتبع مريض",
+        navHow: "كيف يعمل النظام",
+        navLogin: "بوابة الدخول",
+        
+        liveBadge: "نظام توجيه الإسعاف الذكي مفعل",
+        mainHeroTitle: "كل ثانية <br> <span class=\"text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-primary\">تُنقذ حياة.</span>",
+        mainHeroDesc: "منصة إنقاذ تقوم بأتمتة كشف الحوادث، والتحقق منها لحظياً، وتوجيه أقرب سيارة إسعاف لإنقاذ المصابين.",
+        btnTrack: "تتبع حالة المريض",
+        
+        simTitle: "خريطة التنسيق اللحظي",
+        
+        searchTitle: "تتبع حالة المريض",
+        searchDesc: "أدخل المعرف الفريد للجهاز (Device UID) لمعرفة الحالة اللحظية والمستشفى الموجه إليه المريض.",
+        deviceUid: "معرف الجهاز (UID)",
+        btnSearch: "البحث في قاعدة البيانات",
+        
+        howTitle: "بروتوكول النظام",
+        step1Title: "اكتشاف الحادث",
+        step1Desc: "مستشعرات الحركة تكتشف الاصطدام فوراً وترسل الإحداثيات.",
+        step2Title: "10 ثواني للتحقق",
+        step3Title: "التوجيه التلقائي",
+        step4Title: "تنبيه المستشفى",
+        step4Desc: "أقرب مستشفى يستلم بيانات المريض لتجهيز الطوارئ فوراً.",
         // --- Admin Global UI ---
         desktopOnly: "للكمبيوتر والتابلت فقط",
         desktopOnlyDesc: "غرفة التحكم تتطلب شاشة أكبر لعرض الخريطة والتتبع اللحظي.",
@@ -279,6 +340,18 @@ export const translations = {
         stepArrived: "وصول الإسعاف للموقع",
         stepHospital: "الوصول للمستشفى",
         stepResolved: "إغلاق الحالة الطبية",
+        sysInit: "تم تشغيل النظام. جاري فحص المنطقة...",
+crashDetected: "تم رصد حادث: سيارة مدنية رقم ",
+dispatching: "جاري توجيه إسعاف",
+toCrashSite: "إلى موقع الحادث...",
+securingPatient: "يقوم بتأمين المصاب...",
+routingTo: "في طريقه إلى مستشفى",
+droppedPatient: "تم تسليم الحالة. العودة للدورية.",
+wfComplete: "اكتمل البروتوكول. جاري إعادة التشغيل...",
+wfImpact: "تم اكتشاف اصطدام. جاري جمع البيانات...",
+wfUplink: "تم الاتصال بالشبكة. جاري التحقق من الإشارة...",
+wfAnalysing: "جاري تحليل إحداثيات GPS. توجيه الإسعاف...",
+wfHospital: "تم التواصل مع المستشفى بنجاح. تجهيز الطوارئ."
 
     }
 };

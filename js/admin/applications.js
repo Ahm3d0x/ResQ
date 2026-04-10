@@ -274,9 +274,6 @@ const { error: aErr } = await supabase.from('device_applications').update({
     );
 };
 
-// --- تعديل دالة الرفض/التعليق ---
-
-
 window.processAppStatus = function(id, newStatus) {
     const isReject = newStatus === 'rejected';
     const title = isReject ? t('btnReject') : t('btnSuspend');
@@ -287,14 +284,22 @@ window.processAppStatus = function(id, newStatus) {
             const sessionString = localStorage.getItem('resq_custom_session');
             const adminId = sessionString ? JSON.parse(sessionString).id : null;
 
-const { error } = await supabase.from('device_applications').update({
-    status: newStatus,
-    rejection_reason: reason || null,
-    // reviewed_by: adminId, <-- Remove or comment out this line
-    reviewed_at: new Date()
-}).eq('id', id);
+            const { error } = await supabase.from('device_applications').update({
+                status: newStatus,
+                rejection_reason: reason || null,
+                // reviewed_by: adminId, 
+                reviewed_at: new Date()
+            }).eq('id', id);
 
             if(error) throw error;
+
+            // 🌟 الكود الذي كان مفقوداً: إرسال إيميل الرفض 🌟
+            if (isReject) {
+                const app = allApps.find(a => a.id === id);
+                if (app) {
+                    await sendAppEmail(app, 'rejected', { reason: reason || 'لا يستوفي الشروط حالياً' });
+                }
+            }
 
             window.showToast(`Application marked as ${newStatus}.`, 'success');
             window.closeDetailsModal('viewAppModal');

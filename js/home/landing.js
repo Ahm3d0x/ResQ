@@ -1,7 +1,9 @@
 // ============================================================================
 // ملف المحاكاة والتحكم للصفحة الرئيسية (Landing Page SPA) - نظام ResQ
-// الإصدار المتقدم: مرور سيارات، دوريات ذكية، حوادث متعددة
+// الإصدار المتقدم: مرور سيارات، دوريات ذكية، حوادث متعددة مع دعم تعدد اللغات
 // ============================================================================
+
+import { t } from '../core/language.js'; // استدعاء دالة الترجمة
 
 window.switchView = function(viewId) {
     document.querySelectorAll('main > section').forEach(el => {
@@ -196,7 +198,8 @@ function triggerAccident(carId, carEl, accTop, accLeft) {
         <div class="relative z-10 text-xl">💥</div>
     `;
     
-    logTerminal(`🚨 CRASH DETECTED: Civilian Vehicle #${carId.split('_')[1]}`);
+    const crashText = t('crashDetected') || 'CRASH DETECTED: Civilian Vehicle #';
+    logTerminal(`🚨 ${crashText}${carId.split('_')[1]}`);
     
     // إرسال الإسعاف
     handleRescueMission(stoppedTop, stoppedLeft, carEl);
@@ -232,11 +235,14 @@ async function handleRescueMission(accTop, accLeft, accEl) {
     
     // 2. توجيه الأقرب
     assignedAmb.state = 'to_accident';
-    logTerminal(`🚑 Dispatching ${assignedAmb.name} to crash site...`);
+    const dispatchText = t('dispatching') || 'Dispatching';
+    const siteText = t('toCrashSite') || 'to crash site...';
+    logTerminal(`🚑 ${dispatchText} ${assignedAmb.name} ${siteText}`);
     await moveAmbulance(assignedAmb, accTop, accLeft, 25); // سرعة قصوى للإنقاذ
     
     // 3. التحميل (اختفاء الحادث)
-    logTerminal(`⚕️ ${assignedAmb.name} securing patient...`);
+    const secureText = t('securingPatient') || 'securing patient...';
+    logTerminal(`⚕️ ${assignedAmb.name} ${secureText}`);
     accEl.style.opacity = '0'; 
     await new Promise(r => setTimeout(r, 1000)); 
     accEl.remove(); // إزالة السيارة
@@ -255,11 +261,13 @@ async function handleRescueMission(accTop, accLeft, accEl) {
     
     // 5. التوجه للمستشفى
     assignedAmb.state = 'to_hospital';
-    logTerminal(`🏥 ${assignedAmb.name} routing to ${nearestHosp.name}...`);
+    const routingText = t('routingTo') || 'routing to';
+    logTerminal(`🏥 ${assignedAmb.name} ${routingText} ${nearestHosp.name}...`);
     await moveAmbulance(assignedAmb, nearestHosp.top, nearestHosp.left, 20);
     
     // 6. إنهاء المهمة والعودة للدورية
-    logTerminal(`✅ ${assignedAmb.name} dropped patient. Resuming patrol.`);
+    const droppedText = t('droppedPatient') || 'dropped patient. Resuming patrol.';
+    logTerminal(`✅ ${assignedAmb.name} ${droppedText}`);
     document.getElementById(assignedAmb.id).classList.remove('border-blue-500');
     document.getElementById(assignedAmb.id).classList.add('border-gray-400');
     assignedAmb.state = 'idle'; 
@@ -276,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById(amb.id).style.left = `calc(${amb.left}% - 16px)`;
     });
     
-    logTerminal('System Initialized. Scanning area...');
+    logTerminal(t('sysInit') || 'System Initialized. Scanning area...');
     
     // تشغيل الدوريات (كل إسعاف فاضي بيختار نقطة جديدة كل 4 ثواني لو مش بيتحرك)
     setInterval(patrolIdleAmbulances, 4000);
@@ -290,7 +298,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ==========================================
 // 3. محاكي بروتوكول البيانات (How it Works) 
-// (تم الاحتفاظ بالكود البريميوم الأخير الخاص بالـ SVG)
 // ==========================================
 let wfLoop;
 
@@ -301,7 +308,7 @@ function resetAndStartWorkflowAnimation() {
     const motion = document.getElementById('wfMotion');
     const log = document.getElementById('wfLog');
 
-cards.forEach(c => {
+    cards.forEach(c => {
         // ضفنا bg-red-50 للوضع الفاتح
         c.classList.remove('active', 'border-primary/40', 'bg-red-50', 'dark:bg-gray-800/60');
         const loader = c.querySelector('.wf-loader');
@@ -315,22 +322,22 @@ cards.forEach(c => {
 
     async function nextStep() {
         if (step >= 4) {
-            if(log) log.innerText = "PROTOCOL COMPLETE. RESTARTING...";
+            if(log) log.innerText = t('wfComplete') || "PROTOCOL COMPLETE. RESTARTING...";
             setTimeout(resetAndStartWorkflowAnimation, 3000);
             return;
         }
-const card = document.getElementById(`step-${step}`);
+        
+        const card = document.getElementById(`step-${step}`);
         if(!card) return;
-        // ضفنا bg-red-50 للوضع الفاتح
+        
+        // تفعيل الكارت الحالي
         card.classList.add('active', 'border-primary/40', 'bg-red-50', 'dark:bg-gray-800/60');
-        if(!card) return;
-        card.classList.add('active', 'border-primary/40', 'bg-gray-800/60');
         
         if (step === 0 && log) {
-            log.innerText = "IMPACT DETECTED. CAPTURING TELEMETRY...";
+            log.innerText = t('wfImpact') || "IMPACT DETECTED. CAPTURING TELEMETRY...";
             card.querySelector('.wf-loader').style.width = '100%';
         } else if (step === 1 && log) {
-            log.innerText = "UPLINK ESTABLISHED. VERIFYING SIGNAL...";
+            log.innerText = t('wfUplink') || "UPLINK ESTABLISHED. VERIFYING SIGNAL...";
             let timeLeft = 10;
             const counter = card.querySelector('.wf-counter');
             const bits = card.querySelectorAll('.wf-bit');
@@ -344,9 +351,9 @@ const card = document.getElementById(`step-${step}`);
                 if(timeLeft <= 0) { if(bits[4]) bits[4].style.width = '100%'; clearInterval(cd); }
             }, 100);
         } else if (step === 2 && log) {
-            log.innerText = "ANALYSING GPS MATRIX. DISPATCHING UNIT...";
+            log.innerText = t('wfAnalysing') || "ANALYSING GPS MATRIX. DISPATCHING UNIT...";
         } else if (step === 3 && log) {
-            log.innerText = "HOSPITAL HANDSHAKE SUCCESSFUL. PREPARING ER.";
+            log.innerText = t('wfHospital') || "HOSPITAL HANDSHAKE SUCCESSFUL. PREPARING ER.";
         }
 
         if (step < 3 && pulse && motion) {
