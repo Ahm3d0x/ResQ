@@ -1,5 +1,18 @@
 import { supabase, DB_TABLES } from '../config/supabase.js';
+// ==========================================
+// 🛡️ تسجيل الحركات (Audit Log)
+// ==========================================
+const sessionString = localStorage.getItem('resq_custom_session');
+const currentAdminId = sessionString ? JSON.parse(sessionString).id : null;
 
+async function logSystemAction(action, targetTable, targetId, note) {
+    if (!currentAdminId) return;
+    try {
+        await supabase.from('audit_admin_changes').insert([{
+            admin_user_id: currentAdminId, action: action, target_table: targetTable, target_id: targetId, note: note
+        }]);
+    } catch (error) { console.error("Audit Log Failed:", error); }
+}
 const tbody = document.getElementById('hospitalsTableBody');
 const modal = document.getElementById('hospitalModal');
 const form = document.getElementById('hospitalForm');
@@ -229,18 +242,16 @@ window.closeHospitalModal = function() {
     setTimeout(() => { modal.classList.add('hidden'); }, 300);
 };
 
+// داخل المستمع للحدث form.addEventListener('submit', ...)
+
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn = document.getElementById('saveHospBtn');
-    const originalText = btn.innerText;
-    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
-    btn.disabled = true;
-
+    const btn = e.submitter;
+    const originalText = btn.innerHTML;
     const id = document.getElementById('hospId').value;
+
     const hospData = {
         name: document.getElementById('hospName').value,
-        governorate: document.getElementById('hospGov').value,
-        city: document.getElementById('hospCity').value,
         phone: document.getElementById('hospPhone').value,
         available_beds: parseInt(document.getElementById('hospBeds').value),
         user_id: document.getElementById('hospUserId').value || null,
@@ -250,34 +261,64 @@ form.addEventListener('submit', async (e) => {
     };
 
     try {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+        btn.disabled = true;
+
+        // 🛡️ منع تكرار الأكاونت لمستشفى آخر
+        if (hospData.user_id) {
+            const { data: duplicate } = await supabase
+                .from(DB_TABLES.HOSPITALS)
+                .select('id, name')
+                .eq('user_id', hospData.user_id)
+                .neq('id', id || -1); // استثناء المستشفى الحالي عند التعديل
+
+            if (duplicate && duplicate.length > 0) {
+                window.showToast(`هذا الحساب مرتبط بالفعل بمستشفى آخر (${duplicate[0].name})`, "error");
+                return;
+            }
+        }
+
         if (id) {
             const { error } = await supabase.from(DB_TABLES.HOSPITALS).update(hospData).eq('id', id);
             if (error) throw error;
+            await logSystemAction('UPDATE', 'hospitals', id, `Updated hospital: ${hospData.name}`);
         } else {
-            const { error } = await supabase.from(DB_TABLES.HOSPITALS).insert([hospData]);
+            // استخدام select().single() لضمان استرجاع الـ ID للسجل
+            const { data: newHosp, error } = await supabase.from(DB_TABLES.HOSPITALS).insert([hospData]).select().single();
             if (error) throw error;
+            if (newHosp) {
+                await logSystemAction('CREATE', 'hospitals', newHosp.id, `Added new hospital: ${hospData.name}`);
+            }
         }
         
+        window.showToast("تم حفظ بيانات المستشفى بنجاح", "success");
         closeHospitalModal();
         await window.loadHospitalsData();
     } catch (error) {
-        alert("Operation Failed: " + error.message);
+        window.showToast("خطأ في العملية: " + error.message, "error");
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
     }
 });
 
-// ==========================================
-// 8. الحذف (Delete)
-// ==========================================
-window.deleteHospital = async function(id) {
-    if(confirm("DANGER: Are you sure you want to remove this hospital? This action cannot be undone.")) {
-        const { error } = await supabase.from(DB_TABLES.HOSPITALS).delete().eq('id', id);
-        if(error) {
-            alert("Deletion Failed: " + error.message);
-        } else {
-            await window.loadHospitalsData();
+// استبدال دالة الحذف بالكامل
+window.deleteHospital = function(id) {
+    const hosp = allHospitals.find(h => h.id === id);
+    const name = hosp ? hosp.name : id;
+
+    window.openConfirmModal(
+        "حذف مستشفى", 
+        `هل أنت متأكد من حذف مستشفى (${name})؟ لا يمكن التراجع عن هذا الإجراء.`, 
+        async () => {
+            const { error } = await supabase.from(DB_TABLES.HOSPITALS).delete().eq('id', id);
+            if(error) {
+                window.showToast("فشل الحذف: " + error.message, "error");
+            } else {
+                await logSystemAction('DELETE', 'hospitals', id, `Deleted hospital: ${name}`);
+                window.showToast('تم حذف المستشفى بنجاح', 'success');
+                await window.loadHospitalsData();
+            }
         }
-    }
+    );
 };

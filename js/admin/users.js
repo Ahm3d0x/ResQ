@@ -137,25 +137,132 @@ function renderUsersTable(usersData) {
 // 4. العمليات الإدارية (View, Add, Edit, Delete)
 // ==========================================
 
-window.viewUserDetails = function(id) {
+window.viewUserDetails = async function(id) {
     const user = allUsers.find(u => u.id === id);
-    if(!user) return;
+    if (!user) return;
 
-    let roleColor = user.role === 'admin' ? 'text-purple-500' : user.role === 'hospital' ? 'text-blue-500' : user.role === 'driver' ? 'text-green-500' : 'text-gray-500';
+    // 1. تعبئة البيانات الأساسية
+    document.getElementById('viewUserName').innerText = user.name;
+    document.getElementById('viewUserEmail').innerText = user.email;
+    document.getElementById('viewUserPhone').innerText = user.phone || 'غير محدد';
+    document.getElementById('viewUserRole').innerText = user.role.toUpperCase();
+    
+    const statusSpan = document.getElementById('viewUserStatus');
+    statusSpan.innerText = user.is_active ? 'نشط' : 'موقوف';
+    statusSpan.className = user.is_active 
+        ? 'px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-500' 
+        : 'px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-500';
 
-    document.getElementById('viewDetailsContent').innerHTML = `
-        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2"><span class="text-gray-500 font-bold">User ID</span> <span class="font-mono dark:text-white">#${user.id}</span></div>
-        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2"><span class="text-gray-500 font-bold">Full Name</span> <span class="font-bold dark:text-white">${user.name}</span></div>
-        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2"><span class="text-gray-500 font-bold">Email Address</span> <span class="dark:text-white">${user.email}</span></div>
-        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2"><span class="text-gray-500 font-bold">Phone Number</span> <span class="font-mono dark:text-white">${user.phone || 'Not Provided'}</span></div>
-        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2"><span class="text-gray-500 font-bold">Assigned Role</span> <span class="uppercase font-bold tracking-wider ${roleColor}">${user.role}</span></div>
-        <div class="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2"><span class="text-gray-500 font-bold">Account Status</span> <span class="font-bold ${user.is_active ? 'text-success' : 'text-red-500'}">${user.is_active ? 'Active Account' : 'Suspended'}</span></div>
-        <div class="flex justify-between"><span class="text-gray-500 font-bold">Member Since</span> <span class="text-xs text-gray-500">${new Date(user.created_at).toLocaleDateString()}</span></div>
-    `;
+    // 2. إظهار النافذة
+    const modal = document.getElementById('viewUserDetailsModal');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); modal.children[0].classList.remove('scale-95'); }, 10);
 
-    const m = document.getElementById('viewDetailsModal');
-    m.classList.remove('hidden');
-    setTimeout(() => { m.classList.remove('opacity-0'); m.children[0].classList.remove('scale-95'); }, 10);
+    // 3. جلب البيانات المتقدمة إذا كان حساب "عميل/مستخدم عادي"
+    const extraDetailsContainer = document.getElementById('viewUserExtraDetails');
+    if (!extraDetailsContainer) return;
+
+    if (user.role === 'user') {
+        extraDetailsContainer.innerHTML = `<div class="p-8 text-center text-gray-500"><i class="fa-solid fa-circle-notch fa-spin text-2xl text-primary mb-2"></i><br>جاري جلب الملف الشامل للعميل...</div>`;
+        extraDetailsContainer.classList.remove('hidden');
+
+        try {
+            // أ. جلب بيانات التقديم الطبية والمركبة
+            const { data: appData } = await supabase
+                .from('device_applications')
+                .select('*')
+                .eq('email', user.email)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            // ب. جلب الأجهزة المرتبطة بهذا العميل
+            const { data: devices } = await supabase
+                .from('devices')
+                .select('id, device_uid, car_plate')
+                .eq('user_id', user.id);
+
+            let incidentHtml = '';
+            let deviceHtml = '<span class="text-gray-500">لا توجد أجهزة نشطة</span>';
+
+            if (devices && devices.length > 0) {
+                const devIds = devices.map(d => d.id);
+                deviceHtml = devices.map(d => `<span class="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-xs font-mono mr-2">${d.device_uid}</span>`).join('');
+
+                // ج. جلب آخر حادثة مسجلة لأجهزة العميل
+                const { data: incidents } = await supabase
+                    .from('incidents')
+                    .select('*, ambulances(code), hospitals(name)')
+                    .in('device_id', devIds)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                if (incidents && incidents.length > 0) {
+                    const inc = incidents[0];
+                    let statusColor = inc.status === 'completed' ? 'text-green-600' : 'text-orange-500';
+                    incidentHtml = `
+                        <div class="mt-4 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-xl p-4">
+                            <h4 class="text-sm font-black text-red-600 mb-3"><i class="fa-solid fa-car-burst"></i> آخر بلاغ حادث مسجل</h4>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <div><span class="text-gray-500">حالة البلاغ:</span> <b class="${statusColor} uppercase">${inc.status}</b></div>
+                                <div><span class="text-gray-500">التاريخ:</span> <b>${new Date(inc.created_at).toLocaleString()}</b></div>
+                                <div><span class="text-gray-500">الإسعاف الموجه:</span> <b>${inc.ambulances ? inc.ambulances.code : 'لم يتم التوجيه'}</b></div>
+                                <div><span class="text-gray-500">المستشفى الموجه:</span> <b>${inc.hospitals ? inc.hospitals.name : 'لم يتم التوجيه'}</b></div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            // رسم البيانات الطبية والطارئة
+            let appHtml = '';
+            if (appData) {
+                appHtml = `
+                    <div class="space-y-4">
+                        <div class="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                            <h4 class="text-sm font-black text-blue-600 mb-3"><i class="fa-solid fa-notes-medical"></i> السجل الطبي</h4>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <div><span class="text-gray-500 block">فصيلة الدم:</span> <b class="text-red-600 text-sm">${appData.blood_type || 'غير محدد'}</b></div>
+                                <div><span class="text-gray-500 block">الأمراض المزمنة:</span> <b>${appData.medical_conditions || 'لا يوجد'}</b></div>
+                                <div><span class="text-gray-500 block">حساسية ضد:</span> <b>${appData.allergies || 'لا يوجد'}</b></div>
+                                <div><span class="text-gray-500 block">الأدوية الحالية:</span> <b>${appData.medications || '-'}</b></div>
+                            </div>
+                        </div>
+
+                        <div class="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-xl p-4">
+                            <h4 class="text-sm font-black text-orange-600 mb-3"><i class="fa-solid fa-phone-volume"></i> جهات اتصال الطوارئ</h4>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <div><span class="text-gray-500 block">جهة 1 (${appData.emergency1_relation}):</span> <b>${appData.emergency1_name}</b><br><span class="font-mono text-blue-600">${appData.emergency1_phone}</span></div>
+                                <div><span class="text-gray-500 block">جهة 2 (${appData.emergency2_relation || '-'}):</span> <b>${appData.emergency2_name || '-'}</b><br><span class="font-mono text-blue-600">${appData.emergency2_phone || '-'}</span></div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                            <h4 class="text-sm font-black mb-3"><i class="fa-solid fa-car"></i> بيانات المركبات المسجلة</h4>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <div><span class="text-gray-500 block">المركبة في الطلب:</span> <b>${appData.car_brand} ${appData.car_model} (${appData.car_year})</b></div>
+                                <div><span class="text-gray-500 block">رقم اللوحة:</span> <b>${appData.car_plate}</b></div>
+                                <div class="col-span-2"><span class="text-gray-500 block mb-1">الأجهزة المرتبطة حالياً (UIDs):</span> ${deviceHtml}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                appHtml = `<div class="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl text-center text-xs text-gray-500">لم يتم العثور على بيانات تقديم مفصلة لهذا المستخدم.</div>`;
+            }
+
+            // دمج كل المحتوى داخل النافذة
+            extraDetailsContainer.innerHTML = appHtml + incidentHtml;
+
+        } catch (err) {
+            console.error(err);
+            extraDetailsContainer.innerHTML = `<div class="p-4 text-center text-red-500 text-xs">حدث خطأ أثناء جلب الملف الشامل.</div>`;
+        }
+    } else {
+        // إخفاء الحاوية تماماً لو الحساب لمدير أو مستشفى أو إسعاف
+        extraDetailsContainer.classList.add('hidden');
+        extraDetailsContainer.innerHTML = '';
+    }
 };
 
 window.openUserModal = function() {
@@ -199,73 +306,97 @@ window.editUser = function(id) {
 
 userForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
     const btn = document.getElementById('saveUserBtn');
     const originalText = btn.innerText;
-    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Processing...';
-    btn.disabled = true;
 
     const id = document.getElementById('userId').value;
-    const passwordInput = document.getElementById('userPassword').value;
-
     const userData = {
         name: document.getElementById('userName').value,
         email: document.getElementById('userEmail').value,
         phone: document.getElementById('userPhone').value,
         role: document.getElementById('userRole').value,
-        is_active: true
+        is_active: document.getElementById('userStatus').value === 'true',
+        lang: document.getElementById('userLang').value
     };
 
-    if (passwordInput) userData.password_hash = passwordInput;
+    const password = document.getElementById('userPassword').value;
+    if (!id && !password) {
+        window.showToast("كلمة المرور مطلوبة للمستخدمين الجدد.", "error");
+        return;
+    }
+    if (password) userData.password_hash = password;
 
     try {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري الحفظ...';
+        btn.disabled = true;
+
+        // 🛡️ منع تكرار البريد الإلكتروني (Email)
+        if (userData.email) {
+            const { data: duplicateEmail } = await supabase
+                .from(DB_TABLES.USERS)
+                .select('id')
+                .eq('email', userData.email)
+                .neq('id', id || -1);
+
+            if (duplicateEmail && duplicateEmail.length > 0) {
+                window.showToast("البريد الإلكتروني مستخدم بالفعل لحساب آخر.", "error");
+                return; // إيقاف الحفظ
+            }
+        }
+
         if (id) {
             const { error } = await supabase.from(DB_TABLES.USERS).update(userData).eq('id', id);
             if (error) throw error;
-            
-            window.showToast('User updated successfully!', 'success');
-            await logSystemAction('UPDATE', 'users', id, `Updated user details for ${userData.email}`);
+            window.showToast('تم تعديل بيانات المستخدم بنجاح!', 'success');
+            await logSystemAction('UPDATE', 'users', id, `Updated user ${userData.email}`);
         } else {
             const { data, error } = await supabase.from(DB_TABLES.USERS).insert([userData]).select().single();
             if (error) throw error;
-            
-            window.showToast('User created successfully!', 'success');
+            window.showToast('تم إنشاء المستخدم بنجاح!', 'success');
             await logSystemAction('CREATE', 'users', data.id, `Created new user ${userData.email} with role ${userData.role}`);
         }
         
         window.closeDetailsModal('userModal');
         await window.loadUsersData(); 
     } catch (error) {
-        window.showToast("Operation Failed: " + error.message, "error");
+        window.showToast("فشلت العملية: " + error.message, "error");
     } finally {
         btn.innerText = originalText;
         btn.disabled = false;
     }
 });
 
+// ==========================================
+// 🛡️ استخدام نافذة التأكيد المخصصة للحذف بدلاً من confirm()
+// ==========================================
 window.deleteUser = async function(id) {
     const user = allUsers.find(u => u.id === id);
     if (!user) return;
 
-    // 🛡️ حماية إضافية للحذف
+    // حماية إضافية للحذف
     if (user.role === 'admin' && user.id !== currentAdminId) {
-        window.showToast("Unauthorized: Cannot delete other administrators.", "error");
+        window.showToast("غير مصرح: لا يمكنك حذف مدراء آخرين.", "error");
         return;
     }
     
     if (user.id === currentAdminId) {
-        window.showToast("You cannot delete your own active session.", "error");
+        window.showToast("لا يمكنك حذف حسابك الحالي أثناء تسجيل الدخول.", "error");
         return;
     }
 
-    if(confirm("DANGER: Are you sure you want to permanently delete this user?")) {
-        const { error } = await supabase.from(DB_TABLES.USERS).delete().eq('id', id);
-        if(error) {
-            window.showToast("Deletion Failed: " + error.message, "error");
-        } else {
-            window.showToast("User deleted successfully!", "success");
-            await logSystemAction('DELETE', 'users', id, `Deleted user account: ${user.email}`);
-            window.loadUsersData();
+    // استدعاء نافذة النظام المخصصة للحذف
+    window.openConfirmModal(
+        "حذف مستخدم", 
+        `هل أنت متأكد من حذف المستخدم (${user.name}) نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`, 
+        async () => {
+            const { error } = await supabase.from(DB_TABLES.USERS).delete().eq('id', id);
+            if(error) {
+                window.showToast("فشل الحذف: " + error.message, "error");
+            } else {
+                await logSystemAction('DELETE', 'users', id, `Deleted user: ${user.email}`);
+                window.showToast('تم حذف المستخدم بنجاح.', 'success');
+                await window.loadUsersData();
+            }
         }
-    }
+    );
 };

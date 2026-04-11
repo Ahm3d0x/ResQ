@@ -223,34 +223,73 @@ window.editDevice = function(id) {
 
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn = document.getElementById('saveDevBtn'); const original = btn.innerText;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${t('processing') || 'Saving...'}`; btn.disabled = true;
-    
+    const btn = document.getElementById('saveDeviceBtn');
+    const original = btn.innerHTML;
     const id = document.getElementById('devId').value;
-    const userId = document.getElementById('devUserId').value;
 
     const data = {
-        device_uid: document.getElementById('devUid').value.trim(),
-        user_id: userId ? parseInt(userId) : null,
+        device_uid: document.getElementById('devUid').value,
+        user_id: document.getElementById('devUserId').value || null,
+        car_plate: document.getElementById('devCarPlate').value,
         car_model: document.getElementById('devCarModel').value,
-        car_plate: document.getElementById('devCarPlate').value.toUpperCase(),
+        status: document.getElementById('devStatus').value,
         lat: parseFloat(document.getElementById('devLat').value),
-        lng: parseFloat(document.getElementById('devLng').value),
+        lng: parseFloat(document.getElementById('devLng').value)
     };
 
     try {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري الحفظ...';
+        btn.disabled = true;
+
+        // 🛡️ 1. منع تكرار رقم اللوحة (Car Plate) لجهاز آخر
+        if (data.car_plate) {
+            const { data: duplicatePlate } = await supabase
+                .from(DB_TABLES.DEVICES)
+                .select('id, device_uid')
+                .eq('car_plate', data.car_plate)
+                .neq('id', id || -1);
+
+            if (duplicatePlate && duplicatePlate.length > 0) {
+                window.showToast(`رقم اللوحة هذا مرتبط بالفعل بجهاز آخر (${duplicatePlate[0].device_uid})`, "error");
+                return; // إيقاف الحفظ
+            }
+        }
+
+        // 🛡️ 2. منع تكرار معرف الجهاز (Device UID)
+        if (data.device_uid) {
+            const { data: duplicateUid } = await supabase
+                .from(DB_TABLES.DEVICES)
+                .select('id')
+                .eq('device_uid', data.device_uid)
+                .neq('id', id || -1);
+
+            if (duplicateUid && duplicateUid.length > 0) {
+                window.showToast(`معرف الجهاز (UID) مسجل مسبقاً في النظام`, "error");
+                return; // إيقاف الحفظ
+            }
+        }
+
         if (id) {
-            await supabase.from(DB_TABLES.DEVICES).update(data).eq('id', id);
-            window.showToast(t('updateSuccess') || 'Device updated successfully!');
+            const { error } = await supabase.from(DB_TABLES.DEVICES).update(data).eq('id', id);
+            if (error) throw error;
+            window.showToast(t('editSuccess') || 'تم تعديل الجهاز بنجاح!');
             await logSystemAction('UPDATE', 'devices', id, `Updated device UID: ${data.device_uid}`);
         } else {
             const { data: newDev, error } = await supabase.from(DB_TABLES.DEVICES).insert([data]).select().single();
             if (error) throw error;
-            window.showToast(t('addSuccess') || 'Device added successfully!');
+            window.showToast(t('addSuccess') || 'تم إضافة الجهاز بنجاح!');
             await logSystemAction('CREATE', 'devices', newDev.id, `Added new device UID: ${data.device_uid}`);
         }
-        window.closeDetailsModal('deviceModal'); await window.loadDevicesData();
-    } catch (error) { window.showToast((t('error')||"Failed") + ": " + error.message, "error"); } finally { btn.innerHTML = original; btn.disabled = false; }
+        
+        window.closeDetailsModal('deviceModal'); 
+        await window.loadDevicesData();
+
+    } catch (error) { 
+        window.showToast((t('error')||"فشل") + ": " + error.message, "error"); 
+    } finally { 
+        btn.innerHTML = original; 
+        btn.disabled = false; 
+    }
 });
 
 // 🛡️ استخدام نافذة التأكيد المخصصة للحذف (Custom Confirm Modal)

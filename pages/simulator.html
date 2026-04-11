@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ResQ - Hardware Simulator (State Machine)</title>
+    <title>EnQaZ - Hardware Simulator (State Machine)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
         tailwind.config = {
@@ -17,316 +16,312 @@
 <body class="bg-secondary text-white h-screen flex flex-col font-sans">
 
     <header class="bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center z-50 shadow-md">
-                        <a href="../index.html" class="flex items-center group">
-            <img src="../assets/images/logoL.png" alt="EnQaZ Logo" 
-                 class="h-16 sm:h-18  w-auto border-2 border-gray-400 rounded-lg object-contain block dark:hidden transition-transform duration-300 group-hover:scale-105 drop-shadow-md">
-            
-            <img src="../assets/images/logoD.png" alt="EnQaZ Logo" 
-                 class="h-16 sm:h-18  w-auto border-2 border-gray-500 rounded-lg object-contain hidden dark:block transition-transform duration-300 group-hover:scale-105 drop-shadow-md">
+        <a href="../index.html" class="flex items-center group">
+            <img src="../assets/images/logoL.png" alt="EnQaZ Logo" class="h-16 sm:h-18 w-auto border-2 border-gray-400 rounded-lg object-contain bg-white group-hover:scale-105 transition-transform">
+            <span class="ml-3 font-bold text-xl tracking-wider text-white hidden sm:block">EnQaZ <span class="text-primary text-sm tracking-normal ml-1">Hardware Simulator</span></span>
         </a>
-        <div>
-            <h1 class="text-2xl font-black text-primary"><i class="fa-solid fa-microchip"></i> Hardware Simulator</h1>
-            <p class="text-xs text-gray-400 font-mono">Advanced State Machine & Lifecycle Manager</p>
-        </div>
-        <div id="statusBadge" class="px-3 py-1 bg-yellow-500/20 text-yellow-500 rounded text-xs font-bold border border-yellow-500/50">
-            Connecting to Core...
+        <div class="flex items-center gap-3">
+            <div id="sysStatusBadge" class="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-700 text-sm font-bold shadow-inner">
+                <span class="w-2.5 h-2.5 rounded-full bg-gray-500 animate-pulse" id="statusDot"></span>
+                <span id="statusText" class="text-gray-300">Connecting...</span>
+            </div>
         </div>
     </header>
 
-    <div class="flex-1 flex overflow-hidden">
-        
-        <div class="w-1/3 bg-gray-900 p-6 flex flex-col gap-5 border-r border-gray-800 overflow-y-auto z-10 shadow-2xl">
+    <div class="flex-1 overflow-hidden p-4 sm:p-6 flex justify-center items-start">
+        <div class="w-full max-w-md flex flex-col gap-4">
             
-            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                <label class="block text-sm font-bold text-gray-300 mb-2">1. Select Target Device</label>
-                <select id="deviceSelect" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white outline-none focus:border-primary transition-colors">
-                    <option value="">Loading devices...</option>
-                </select>
-            </div>
-
-            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                <label class="block text-sm font-bold text-gray-300 mb-2">2. Impact Location (Click Map)</label>
-                <div class="grid grid-cols-2 gap-2">
-                    <div class="bg-gray-900 p-2 rounded border border-gray-700">
-                        <span class="text-[10px] text-gray-500 block">LATITUDE</span>
-                        <span id="latDisplay" class="font-mono text-sm text-blue-400">Not selected</span>
-                    </div>
-                    <div class="bg-gray-900 p-2 rounded border border-gray-700">
-                        <span class="text-[10px] text-gray-500 block">LONGITUDE</span>
-                        <span id="lngDisplay" class="font-mono text-sm text-blue-400">Not selected</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                <label class="block text-sm font-bold text-gray-300 mb-2">3. G-Force Severity</label>
-                <select id="severitySelect" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white outline-none focus:border-primary">
-                    <option value="high">High Impact (9.5 G - Airbags)</option>
-                    <option value="medium">Medium Impact (4.5 G)</option>
-                </select>
-            </div>
-
-            <div id="actionArea" class="mt-auto min-h-[80px] flex flex-col justify-end">
-                <button id="triggerBtn" disabled class="w-full bg-primary text-white font-black text-lg py-4 rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-[0_0_20px_rgba(220,38,38,0.3)] flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-satellite-dish"></i> SEND CRASH SIGNAL
-                </button>
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800 shadow-xl flex flex-col gap-4 relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-gray-800 via-primary to-gray-800 opacity-50"></div>
                 
-                <div id="activeControlArea" class="hidden flex-col gap-2">
-                    <div class="bg-gray-800 border border-gray-700 rounded-lg p-3 text-center">
-                        <span class="text-[10px] text-gray-400 uppercase tracking-widest block mb-1">Active Incident Status</span>
-                        <span id="activeStatusDisplay" class="font-black text-warning uppercase">PENDING</span>
+                <h2 class="font-bold text-lg text-gray-200 border-b border-gray-800 pb-2"><i class="fa-solid fa-microchip text-blue-400 mr-2"></i> Device Selection</h2>
+                
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider">Select Target Device</label>
+                    <select id="deviceSelect" class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-sm shadow-inner appearance-none">
+                        <option value="">-- Load devices... --</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 pt-10 text-gray-400">
+                        <i class="fa-solid fa-chevron-down text-xs"></i>
                     </div>
-                    <button id="cancelBtn" class="w-full bg-gray-700 text-white font-black text-sm py-4 rounded-xl hover:bg-gray-600 border border-gray-500 transition flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-ban text-red-400"></i> CANCEL INCIDENT (FALSE ALARM)
-                    </button>
+                </div>
+
+                <div id="deviceInfoCard" class="hidden bg-gray-800/50 rounded-lg p-3 border border-gray-700/50 mt-2">
+                     <div class="flex items-center gap-3">
+                         <div class="w-10 h-10 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
+                             <i class="fa-solid fa-car"></i>
+                         </div>
+                         <div>
+                             <div id="devOwnerName" class="font-bold text-sm text-gray-200">Owner Name</div>
+                             <div id="devPhone" class="text-xs text-gray-400 font-mono">Phone Number</div>
+                         </div>
+                     </div>
                 </div>
             </div>
-            
-            <div id="logArea" class="h-40 bg-black rounded-lg p-3 font-mono text-[10px] text-green-400 overflow-y-auto border border-gray-800 shadow-inner leading-relaxed">
-                > System State Machine Initialized.<br>
+
+            <div class="bg-gray-900 rounded-xl p-5 border border-gray-800 shadow-xl flex flex-col gap-4">
+                 <h2 class="font-bold text-lg text-gray-200 border-b border-gray-800 pb-2"><i class="fa-solid fa-bolt text-yellow-400 mr-2"></i> Hardware Action</h2>
+                 
+                 <div id="idleControlArea">
+                     <p class="text-xs text-gray-400 mb-4">Location and speed will be automatically captured from the device's current live state.</p>
+                     
+                     <div class="grid grid-cols-2 gap-3 mb-4">
+                         <div>
+                             <label class="block text-xs font-bold text-gray-400 mb-1">G-Force</label>
+                             <input type="number" id="gForceInput" value="4.5" step="0.1" class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 outline-none font-mono text-sm">
+                         </div>
+                     </div>
+
+                     <button id="triggerBtn" disabled class="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-black py-4 rounded-xl shadow-lg hover:shadow-red-500/20 transition-all uppercase tracking-widest text-sm relative overflow-hidden group">
+                         <span class="relative z-10"><i class="fa-solid fa-satellite-dish mr-2"></i> Send Crash Signal</span>
+                         <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                     </button>
+                 </div>
+
+                 <div id="activeControlArea" class="hidden flex-col gap-4">
+                     <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col items-center justify-center text-center">
+                         <i class="fa-solid fa-triangle-exclamation text-warning text-3xl mb-2 animate-bounce"></i>
+                         <div class="text-sm text-gray-400 uppercase tracking-widest mb-1">Current State</div>
+                         <div id="activeStatusDisplay" class="font-black text-xl uppercase tracking-wider text-warning">PENDING</div>
+                     </div>
+                     <button id="cancelBtn" class="w-full bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 font-bold py-3 rounded-lg shadow-sm transition-all uppercase tracking-wider text-sm flex items-center justify-center gap-2">
+                         <i class="fa-solid fa-xmark text-red-400"></i> Cancel Hardware Request
+                     </button>
+                 </div>
             </div>
         </div>
-
-        <div id="simMap" class="w-2/3 h-full bg-black z-0 relative"></div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
     <script type="module">
         import { supabase, DB_TABLES } from '../js/config/supabase.js';
 
-        // UI Elements
+        // Elements
         const deviceSelect = document.getElementById('deviceSelect');
-        const latDisplay = document.getElementById('latDisplay');
-        const lngDisplay = document.getElementById('lngDisplay');
         const triggerBtn = document.getElementById('triggerBtn');
         const cancelBtn = document.getElementById('cancelBtn');
-        const actionArea = document.getElementById('actionArea');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const deviceInfoCard = document.getElementById('deviceInfoCard');
+        const devOwnerName = document.getElementById('devOwnerName');
+        const devPhone = document.getElementById('devPhone');
+        
         const activeControlArea = document.getElementById('activeControlArea');
+        const idleControlArea = document.getElementById('idleControlArea');
         const activeStatusDisplay = document.getElementById('activeStatusDisplay');
-        const statusBadge = document.getElementById('statusBadge');
-        const logArea = document.getElementById('logArea');
-        const severitySelect = document.getElementById('severitySelect');
+        const gForceInput = document.getElementById('gForceInput');
 
-        let selectedLat = null;
-        let selectedLng = null;
-        let currentActiveIncident = null; // يحمل بيانات الحادث النشط للجهاز المختار
+        let devicesMap = {};
+        let currentActiveIncident = null;
 
-        function log(msg, type = 'info') {
-            const color = type === 'error' ? 'text-red-500' : type === 'success' ? 'text-blue-400' : 'text-green-400';
-            logArea.innerHTML += `<span class="${color}">> ${msg}</span><br>`;
-            logArea.scrollTop = logArea.scrollHeight;
-        }
-
-        // ==========================================
-        // 1. Map Setup
-        // ==========================================
-        const map = L.map('simMap', {zoomControl: false}).setView([30.0444, 31.2357], 12);
-        L.control.zoom({ position: 'topright' }).addTo(map);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-        let crashMarker = null;
-
-        map.on('click', function(e) {
-            if(currentActiveIncident) return; // منع تغيير المكان لو في حادث نشط
-            selectedLat = e.latlng.lat;
-            selectedLng = e.latlng.lng;
-            latDisplay.innerText = selectedLat.toFixed(5);
-            lngDisplay.innerText = selectedLng.toFixed(5);
-
-            if (crashMarker) map.removeLayer(crashMarker);
-            crashMarker = L.marker([selectedLat, selectedLng], {
-                icon: L.divIcon({ html: '<div class="w-6 h-6 bg-primary rounded-full border-2 border-white animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.8)]"></div>', className: '' })
-            }).addTo(map);
-
-            updateUIState();
-        });
-
-        // ==========================================
-        // 2. State Machine Functions (Modular)
-        // ==========================================
+        // Initialize
         async function fetchDevices() {
             try {
-                const { data, error } = await supabase.from(DB_TABLES.DEVICES).select('id, device_uid, car_model');
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-warning animate-pulse";
+                statusText.innerText = "Fetching...";
+                
+                const { data, error } = await supabase.from(DB_TABLES.DEVICES).select('*, users(name, phone)');
                 if (error) throw error;
-                if (data.length === 0) return statusBadge.innerText = "DB Empty!";
-                
-                deviceSelect.innerHTML = '<option value="">-- Choose a Device --</option>';
-                data.forEach(d => deviceSelect.innerHTML += `<option value="${d.id}">${d.device_uid} (${d.car_model})</option>`);
-                statusBadge.className = "px-3 py-1 bg-green-500/20 text-green-500 rounded text-xs font-bold border border-green-500/50";
-                statusBadge.innerText = "Connected & Ready";
-                log("Devices loaded successfully.");
-            } catch (e) { log(`Init Error: ${e.message}`, 'error'); }
+
+                deviceSelect.innerHTML = '<option value="">-- Select Device --</option>';
+                data.forEach(dev => {
+                    devicesMap[dev.id] = dev;
+                    const opt = document.createElement('option');
+                    opt.value = dev.id;
+                    opt.text = `${dev.device_uid} - ${dev.users?.name || 'Unknown'}`;
+                    deviceSelect.appendChild(opt);
+                });
+
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-success shadow-[0_0_8px_rgba(16,185,129,0.8)]";
+                statusText.innerText = "Connected";
+                statusText.classList.replace('text-gray-300', 'text-success');
+
+            } catch (err) {
+                console.error("Error fetching devices:", err);
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+                statusText.innerText = "Connection Failed";
+                deviceSelect.innerHTML = '<option value="">Error loading devices</option>';
+            }
         }
 
-        async function checkDeviceState(deviceId) {
-            log(`Checking active state for device ${deviceId}...`);
-            const { data, error } = await supabase.from(DB_TABLES.INCIDENTS)
-                .select('*')
-                .eq('device_id', deviceId)
-                .not('status', 'in', '("completed","canceled")')
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            if (error) {
-                log(`State check error: ${error.message}`, 'error');
-                return;
+        // Get live position of the device
+        function getDeviceCurrentLocation(deviceId) {
+            // First check simulation cache if in simulation mode
+            const simCache = JSON.parse(localStorage.getItem('resq_sim_positions') || '{}');
+            const simData = simCache[`devices_${deviceId}`];
+            
+            if (simData) {
+                return {
+                    lat: simData.lat,
+                    lng: simData.lng,
+                    speed: simData.speed || 80 // Default speed if not tracked yet
+                };
             }
 
-            if (data && data.length > 0) {
-                currentActiveIncident = data[0];
-                log(`Found active incident #${currentActiveIncident.id} (${currentActiveIncident.status})`);
-                
-                // تحديث الخريطة بمكان الحادث النشط
-                if (crashMarker) map.removeLayer(crashMarker);
-                crashMarker = L.marker([currentActiveIncident.latitude, currentActiveIncident.longitude], {
-                    icon: L.divIcon({ html: '<div class="text-2xl drop-shadow-[0_0_10px_rgba(220,38,38,0.8)]">💥</div>', className: '' })
-                }).addTo(map);
-                map.flyTo([currentActiveIncident.latitude, currentActiveIncident.longitude], 15);
-                
-                selectedLat = currentActiveIncident.latitude;
-                selectedLng = currentActiveIncident.longitude;
-                latDisplay.innerText = selectedLat.toFixed(5);
-                lngDisplay.innerText = selectedLng.toFixed(5);
-            } else {
-                currentActiveIncident = null;
-                if (crashMarker) map.removeLayer(crashMarker);
-                selectedLat = null; selectedLng = null;
-                latDisplay.innerText = "Not selected"; lngDisplay.innerText = "Not selected";
+            // Fallback to database coordinates
+            const dev = devicesMap[deviceId];
+            if (dev && dev.lat && dev.lng) {
+                return {
+                    lat: parseFloat(dev.lat),
+                    lng: parseFloat(dev.lng),
+                    speed: dev.currentSpeed || 0
+                };
             }
-            updateUIState();
+
+            // Absolute fallback (Default Cairo)
+            return { lat: 30.0444, lng: 31.2357, speed: 0 };
         }
 
-        async function createHardwareRequest(deviceId, lat, lng, type, payload, incId = null) {
-            const { data, error } = await supabase.from('hardware_requests').insert([{
-                device_id: deviceId, lat, lng, request_type: type, raw_payload: JSON.stringify(payload), incident_id: incId
-            }]).select().single();
-            if (error) throw error;
-            return data;
-        }
-
-        async function createIncident(deviceId, hwReqId, lat, lng, gForce) {
-            // حساب الـ Deadline بعد 10 ثواني من الآن
-            const deadline = new Date(Date.now() + 10000).toISOString();
-            const { data, error } = await supabase.from(DB_TABLES.INCIDENTS).insert([{
-                device_id: deviceId, hardware_request_id: hwReqId, latitude: lat, longitude: lng,
-                status: 'pending', g_force: gForce, confirmation_deadline: deadline
-            }]).select().single();
-            if (error) throw error;
-            return data;
-        }
-
-        async function logIncident(incidentId, action, performedBy, note = '') {
-            const { error } = await supabase.from('incident_logs').insert([{
-                incident_id: incidentId, action, performed_by: performedBy, note
-            }]);
-            if (error) console.error("Log writing failed:", error);
-        }
-
-        // ==========================================
-        // 3. Execution Protocols (Send / Cancel)
-        // ==========================================
-        triggerBtn.addEventListener('click', async () => {
-            const deviceId = deviceSelect.value;
-            triggerBtn.disabled = true; triggerBtn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> PROCESSING...";
-
+        async function checkActiveIncident(deviceId) {
             try {
-                log(`[STEP 1] Generating Hardware Request (Alert)...`);
-                const gForce = severitySelect.value === 'high' ? 9.5 : 4.5;
-                const hwReq = await createHardwareRequest(deviceId, selectedLat, selectedLng, 'alert', { sensor: "G-Force", value: gForce, trigger: "auto" });
-
-                log(`[STEP 2] Registering Incident with 10s Deadline...`);
-                const incident = await createIncident(deviceId, hwReq.id, selectedLat, selectedLng, gForce);
-
-                log(`[STEP 3] Writing Initial Logs...`);
-                await logIncident(incident.id, 'created', `device:${deviceId}`, 'Initial impact detected via hardware');
+                const { data, error } = await supabase
+                    .from(DB_TABLES.INCIDENTS)
+                    .select('*')
+                    .eq('device_id', deviceId)
+                    .not('status', 'in', '("completed","canceled")')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
                 
-                // ربط الهاردوير بالحادث
-                await supabase.from('hardware_requests').update({ incident_id: incident.id }).eq('id', hwReq.id);
-
-                log(`✅ SUCCESS: INC-${incident.id} created and ticking.`, 'success');
-                currentActiveIncident = incident;
+                if (error) throw error;
+                currentActiveIncident = data && data.length > 0 ? data[0] : null;
                 updateUIState();
+            } catch (err) {
+                console.error("Error checking incident:", err);
+            }
+        }
 
-            } catch (error) {
-                log(`❌ CRASH SIGNAL FAILED: ${error.message}`, 'error');
-                triggerBtn.disabled = false; triggerBtn.innerHTML = "<i class='fa-solid fa-satellite-dish'></i> SEND CRASH SIGNAL";
+        // UI Updates
+        deviceSelect.addEventListener('change', async (e) => {
+            const devId = e.target.value;
+            if (devId) {
+                const dev = devicesMap[devId];
+                devOwnerName.innerText = dev.users?.name || 'Unknown User';
+                devPhone.innerText = dev.users?.phone || 'No Phone';
+                deviceInfoCard.classList.remove('hidden');
+                triggerBtn.disabled = false;
+                await checkActiveIncident(devId);
+            } else {
+                deviceInfoCard.classList.add('hidden');
+                triggerBtn.disabled = true;
+                currentActiveIncident = null;
+                updateUIState();
             }
         });
 
+        // Send Crash Signal
+        triggerBtn.addEventListener('click', async () => {
+            const devId = deviceSelect.value;
+            if (!devId) return;
+
+            const dev = devicesMap[devId];
+            
+            // Get live location and speed
+            const liveData = getDeviceCurrentLocation(devId);
+            const gForce = parseFloat(gForceInput.value) || 4.5;
+
+            triggerBtn.disabled = true;
+            triggerBtn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> Sending...";
+
+            try {
+// 1. Create Hardware Request
+// 1. Create Hardware Request
+                const { data: hwReq, error: hwErr } = await supabase.from(DB_TABLES.HARDWARE_REQUESTS).insert([{
+                    device_id: dev.id,
+                    request_type: 'alert',
+                    lat: liveData.lat, // 🔴 وضع الإحداثيات في أعمدتها المنفصلة
+                    lng: liveData.lng,
+                    raw_payload: JSON.stringify({ // 🔴 تغيير الاسم إلى raw_payload وتحويل الكائن لنص
+                        speed: liveData.speed,
+                        g_force: gForce,
+                        crash_detected: true
+                    })
+                }]).select().single();
+
+                if (hwErr) throw hwErr;
+
+               // 2. Create Incident
+                const { data: incData, error: incErr } = await supabase.from(DB_TABLES.INCIDENTS).insert([{
+                    device_id: dev.id,
+                    latitude: liveData.lat,
+                    longitude: liveData.lng,
+                    speed: liveData.speed, // 🔴 تسجيل السرعة في عمودها المخصص
+                    g_force: gForce,       // 🔴 تسجيل قوة الاصطدام (G-Force) في عمودها المخصص
+                    status: 'pending',
+                    hardware_request_id: hwReq.id
+                }]).select().single();
+
+                if (incErr) throw incErr;
+
+                currentActiveIncident = incData;
+                updateUIState();
+
+            } catch (err) {
+                console.error("Crash Signal Error:", err);
+                alert("Failed to send crash signal.");
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = "<i class='fa-solid fa-satellite-dish'></i> Send Crash Signal";
+            }
+        });
+
+        // Cancel Signal
         cancelBtn.addEventListener('click', async () => {
             if (!currentActiveIncident) return;
-            const inc = currentActiveIncident;
-            cancelBtn.disabled = true; cancelBtn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> CANCELING...";
-            log(`🛑 INITIATING CANCEL PROTOCOL FOR INC-${inc.id}...`);
+            
+            cancelBtn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> Canceling...";
+            cancelBtn.disabled = true;
 
             try {
-                // 1. Release Ambulance (If assigned)
-                if (inc.assigned_ambulance_id) {
-                    await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'available' }).eq('id', inc.assigned_ambulance_id);
-                    log(`- Resource Freed: Ambulance #${inc.assigned_ambulance_id}`, 'success');
-                }
+// 1. Log Cancel Hardware Request
+// 1. Log Cancel Hardware Request
+                await supabase.from(DB_TABLES.HARDWARE_REQUESTS).insert([{
+                    device_id: currentActiveIncident.device_id,
+                    request_type: 'cancel',
+                    raw_payload: JSON.stringify({ reason: "User triggered cancel from device" }) // 🔴 تحويلها إلى raw_payload كنص
+                }]);
+                // 2. Update Incident Status
+                const { error } = await supabase.from(DB_TABLES.INCIDENTS)
+                    .update({ status: 'canceled' })
+                    .eq('id', currentActiveIncident.id);
 
-                // 2. Release Hospital Bed (If assigned)
-                if (inc.assigned_hospital_id) {
-                    const { data: h } = await supabase.from(DB_TABLES.HOSPITALS).select('available_beds').eq('id', inc.assigned_hospital_id).single();
-                    if (h) {
-                        await supabase.from(DB_TABLES.HOSPITALS).update({ available_beds: h.available_beds + 1 }).eq('id', inc.assigned_hospital_id);
-                        log(`- Resource Freed: Hospital Bed`, 'success');
-                    }
-                }
+                if (error) throw error;
 
-                // 3. Update Incident State
-                await supabase.from(DB_TABLES.INCIDENTS).update({
-                    status: 'canceled', is_false_alarm: true, resolved_at: new Date().toISOString(),
-                    assigned_ambulance_id: null, assigned_hospital_id: null
-                }).eq('id', inc.id);
-
-                // 4. Register Hardware Cancel Signal & Logs
-                await createHardwareRequest(inc.device_id, selectedLat, selectedLng, 'cancel', { action: "user_canceled" }, inc.id);
-                await logIncident(inc.id, 'canceled', `device:${inc.device_id}`, 'Hardware override (False Alarm)');
-
-                log(`✅ INC-${inc.id} SUCCESSFULLY CANCELED. SYSTEM RESET.`, 'success');
                 currentActiveIncident = null;
-                if(crashMarker) map.removeLayer(crashMarker);
                 updateUIState();
 
-            } catch (error) {
-                log(`❌ CANCEL FAILED: ${error.message}`, 'error');
+            } catch (err) {
+                console.error("Cancel Error:", err);
+                alert("Failed to cancel.");
             } finally {
-                cancelBtn.disabled = false; cancelBtn.innerHTML = "<i class='fa-solid fa-ban text-red-400'></i> CANCEL INCIDENT (FALSE ALARM)";
+                cancelBtn.innerHTML = "<i class='fa-solid fa-xmark'></i> Cancel Hardware Request";
+                cancelBtn.disabled = false;
             }
         });
 
-        // ==========================================
-        // 4. UI State Manager
-        // ==========================================
-        deviceSelect.addEventListener('change', () => {
-            if(deviceSelect.value) checkDeviceState(deviceSelect.value);
-            else { currentActiveIncident = null; updateUIState(); }
-        });
+        // Realtime Subscription
+        supabase.channel('simulator-incidents').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: DB_TABLES.INCIDENTS }, payload => {
+            if (currentActiveIncident && payload.new.id === currentActiveIncident.id) {
+                currentActiveIncident = payload.new;
+                updateUIState();
+            }
+        }).subscribe();
 
         function updateUIState() {
-            if (currentActiveIncident) {
-                // Device has active incident: Show Cancel, Hide Send
-                triggerBtn.classList.add('hidden');
+            if (currentActiveIncident && currentActiveIncident.status !== 'canceled' && currentActiveIncident.status !== 'completed') {
+                idleControlArea.classList.add('hidden');
                 activeControlArea.classList.remove('hidden');
                 activeControlArea.classList.add('flex');
                 
                 let sColor = currentActiveIncident.status === 'pending' ? 'text-warning' : 
                              currentActiveIncident.status === 'in_progress' ? 'text-purple-400' : 'text-blue-400';
-                activeStatusDisplay.className = `font-black uppercase tracking-wider ${sColor}`;
+                activeStatusDisplay.className = `font-black text-xl uppercase tracking-wider ${sColor}`;
                 activeStatusDisplay.innerText = currentActiveIncident.status.replace('_', ' ');
             } else {
-                // Idle State: Show Send, Hide Cancel
-                triggerBtn.classList.remove('hidden');
+                idleControlArea.classList.remove('hidden');
                 activeControlArea.classList.add('hidden');
                 activeControlArea.classList.remove('flex');
                 
-                if (deviceSelect.value && selectedLat && selectedLng) {
+                if (deviceSelect.value) {
                     triggerBtn.disabled = false;
-                    triggerBtn.innerHTML = "<i class='fa-solid fa-satellite-dish'></i> SEND CRASH SIGNAL";
-                } else {
-                    triggerBtn.disabled = true;
+                    triggerBtn.innerHTML = "<i class='fa-solid fa-satellite-dish mr-2'></i> Send Crash Signal";
                 }
             }
         }
@@ -334,4 +329,4 @@
         fetchDevices();
     </script>
 </body>
-</html>     
+</html>

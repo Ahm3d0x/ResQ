@@ -30,17 +30,22 @@
     </div>
 
     <aside id="sidebar" class="w-64 bg-white dark:bg-gray-900 border-r rtl:border-l rtl:border-r-0 border-gray-200 dark:border-white/10 flex flex-col transition-all duration-300 z-50">
-        <div class="h-16 flex items-center px-6 gap-3 border-b border-gray-200 dark:border-white/10 justify-between">
-            <div class="flex items-center gap-3 overflow-hidden">
-        <a href="../index.html" class="flex items-center group">
-            <img src="../assets/images/logoL.png" alt="EnQaZ Logo" 
-                 class="h-12 sm:h-12  w-auto border-2 border-gray-400 rounded-lg object-contain block dark:hidden transition-transform duration-300 group-hover:scale-105 drop-shadow-md">
-            
-            <img src="../assets/images/logoD.png" alt="EnQaZ Logo" 
-                 class="h-12 sm:h-12  w-auto border-2 border-gray-500 rounded-lg object-contain hidden dark:block transition-transform duration-300 group-hover:scale-105 drop-shadow-md">
-        </a>
-            </div>
-            <button onclick="toggleLeftSidebar()" class="text-gray-500 hover:text-primary transition-colors"><i class="fa-solid fa-bars"></i></button>
+<div id="sidebarHeader" class="h-16 flex items-center px-6 border-b border-gray-200 dark:border-white/10 justify-between transition-all duration-300 overflow-hidden">
+    
+    <a href="../index.html" id="fullLogo" class="flex items-center group shrink-0">
+        <img src="../assets/images/logoL.png" alt="EnQaZ Logo" class="h-10 sm:h-12 w-auto border-2 border-gray-400 rounded-lg object-contain block dark:hidden transition-transform duration-300 group-hover:scale-105 drop-shadow-md">
+        <img src="../assets/images/logoD.png" alt="EnQaZ Logo" class="h-10 sm:h-12 w-auto border-2 border-gray-500 rounded-lg object-contain hidden dark:block transition-transform duration-300 group-hover:scale-105 drop-shadow-md">
+    </a>
+    
+    <button id="miniLogo" onclick="toggleLeftSidebar()" class="hidden w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shrink-0 hover:scale-105 transition-transform">
+        <i class="fa-solid fa-bolt-lightning text-white text-xl"></i>
+    </button>
+
+    <button id="hamburgerBtn" onclick="toggleLeftSidebar()" class="text-gray-500 hover:text-primary transition-colors shrink-0">
+        <i class="fa-solid fa-bars text-xl"></i>
+    </button>
+    
+</div>
         </div>
         <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-2" id="sidebarNav">
             <a href="#" class="flex items-center gap-3 px-3 py-2.5 bg-primary/10 text-primary rounded-lg font-bold" data-module="dashboard"><i class="fa-solid fa-chart-line w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navDash">Dashboard</span></a>
@@ -51,6 +56,7 @@
             <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-bold transition-colors" data-module="applications"><i class="fa-solid fa-file-signature w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navApps">Applications</span></a>
             <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-bold transition-colors" data-module="incidents"><i class="fa-solid fa-file-medical-alt w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navIncidents">Incidents Log</span></a>
         <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-bold transition-colors" data-module="logs"><i class="fa-solid fa-clipboard-list w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navLogs">System Logs</span></a>
+        <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-bold transition-colors" data-module="settings"><i class="fa-solid fa-cogs w-5 text-center"></i> <span class="nav-text whitespace-nowrap transition-opacity duration-300" data-i18n="navSettings">Settings</span></a>
         </nav>
     </aside>
 
@@ -102,33 +108,74 @@
                 <div id="mapContainer" class="flex-1 bg-gray-900 z-10 rounded-2xl overflow-hidden relative shadow-lg transition-all duration-500">
                     <div id="adminMap" class="w-full h-full bg-[#1a1a2e]"></div>
                     
-                    <div class="absolute top-4 left-4 rtl:right-4 rtl:left-auto z-[400] flex flex-col gap-2 pointer-events-none">
-                        <button id="toggleTrafficBtn" class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white px-3 py-2 rounded-xl border border-white/10 hover:bg-gray-800 text-xs font-bold shadow-lg transition-all flex items-center gap-2">
-                            <span class="text-base">🚦</span> <span data-i18n="btnTraffic">Traffic</span>
-                        </button>
-                        <button id="toggleHeatmapBtn" class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white px-3 py-2 rounded-xl border border-white/10 hover:bg-gray-800 text-xs font-bold shadow-lg transition-all flex items-center gap-2">
-                            <span class="text-base">🔥</span> <span data-i18n="btnHeatmap">Heatmap</span>
-                        </button>
-                    </div>
+<div class="absolute top-20 left-4 rtl:right-4 rtl:left-auto z-[400] bg-white/90 dark:bg-gray-900/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 flex flex-col gap-3 min-w-[200px]">
+    <h3 class="font-bold text-sm border-b border-gray-200 dark:border-gray-700 pb-2" data-i18n="mapControls">تحكم الخريطة</h3>
+    
+    <label class="flex items-center justify-between text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 p-1 rounded transition-colors">
+        <div class="flex items-center gap-2"><i class="fa-solid fa-hospital text-green-500 w-4 text-center"></i> <span data-i18n="navHospitals">المستشفيات</span></div>
+        <input type="checkbox" checked onchange="MapEngine.toggleLayer('hospitals', this.checked)" class="accent-primary w-4 h-4">
+    </label>
+    
+    <label class="flex items-center justify-between text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 p-1 rounded transition-colors">
+        <div class="flex items-center gap-2"><i class="fa-solid fa-truck-medical text-blue-500 w-4 text-center"></i> <span data-i18n="navAmbulances">الإسعاف</span></div>
+        <input type="checkbox" checked onchange="MapEngine.toggleLayer('ambulances', this.checked)" class="accent-primary w-4 h-4">
+    </label>
+    
+    <label class="flex items-center justify-between text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 p-1 rounded transition-colors">
+        <div class="flex items-center gap-2"><i class="fa-solid fa-car text-gray-500 w-4 text-center"></i> <span data-i18n="navDevices">السيارات (المدنيين)</span></div>
+        <input type="checkbox" id="toggleUsersMap" onchange="MapEngine.toggleLayer('devices', this.checked)" class="accent-primary w-4 h-4" checked>
+    </label>
+
+    <div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+
+    <label class="flex items-center justify-between text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 p-1 rounded transition-colors">
+        <div class="flex items-center gap-2"><i class="fa-solid fa-fire text-orange-500 w-4 text-center"></i> <span data-i18n="heatmap">الخريطة الحرارية</span></div>
+        <input type="checkbox" id="toggleHeatmapMap" onchange="window.toggleHeatmapAction(this.checked)" class="accent-orange-500 w-4 h-4">
+    </label>
+
+    <label class="flex items-center justify-between text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 p-1 rounded transition-colors">
+        <div class="flex items-center gap-2"><i class="fa-solid fa-traffic-light text-red-500 w-4 text-center"></i> <span data-i18n="traffic">الزحام المروري</span></div>
+        <input type="checkbox" id="toggleTrafficMap" onchange="window.toggleTrafficAction(this.checked)" class="accent-red-500 w-4 h-4">
+    </label>
+</div>
                 </div>
                 
-                <div id="rightSidebar" class="w-96 flex flex-col gap-4 overflow-y-auto h-full ltr:pr-1 rtl:pl-1 pb-4 transition-all duration-500 flex-shrink-0">
-                    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg flex flex-col flex-shrink-0 transition-all duration-300" style="max-height: 50vh;">
-                        <div class="p-3 border-b dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5 cursor-pointer sticky top-0 z-10" onclick="toggleSection('incidentsBody', 'incIcon')"><h3 class="font-bold text-sm dark:text-white"><i class="fa-solid fa-triangle-exclamation text-primary ltr:mr-2 rtl:ml-2"></i> <span data-i18n="dashIncidents">Incidents</span></h3><div class="flex items-center gap-3"><span id="pendingCountBadge" class="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full font-bold">0</span><i id="incIcon" class="fa-solid fa-chevron-up text-gray-400"></i></div></div>
-                        <div id="incidentsBody" class="overflow-y-auto p-2 space-y-2 transition-all"></div>
-                    </div>
-                    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg flex flex-col flex-shrink-0 transition-all duration-300" style="max-height: 40vh;">
-                        <div class="p-3 border-b dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5 cursor-pointer sticky top-0 z-10" onclick="toggleSection('ambBody', 'ambIcon')"><h3 class="font-bold text-sm dark:text-white"><i class="fa-solid fa-truck-fast text-success ltr:mr-2 rtl:ml-2"></i> <span data-i18n="dashFleet">Fleet</span></h3><i id="ambIcon" class="fa-solid fa-chevron-up text-gray-400"></i></div>
-                        <div id="ambBody" class="overflow-y-auto p-2 space-y-2 transition-all"></div>
-                    </div>
-                    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg flex flex-col flex-shrink-0 transition-all duration-300 min-h-[250px]">
-                        <div class="p-3 border-b dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5 cursor-pointer sticky top-0 z-10" onclick="toggleSection('devBody', 'devIcon')"><h3 class="font-bold text-sm dark:text-white"><i class="fa-solid fa-car text-blue-500 ltr:mr-2 rtl:ml-2"></i> <span data-i18n="dashDevices">Active Devices</span></h3><i id="devIcon" class="fa-solid fa-chevron-up text-gray-400"></i></div>
-                        <div id="devBody" class="flex flex-col flex-1 overflow-hidden transition-all">
-                            <div class="p-2 border-b dark:border-white/5"><input type="text" id="deviceSearchInput" data-i18n-placeholder="searchDevicePlaceholder" placeholder="Search ID or Owner..." class="w-full bg-gray-100 dark:bg-gray-800 text-xs px-3 py-2 rounded-lg outline-none text-gray-800 dark:text-white focus:ring-1 focus:ring-blue-500"></div>
-                            <div id="devicesPanelList" class="overflow-y-auto p-2 space-y-2 flex-1"></div>
-                        </div>
-                    </div>
-                </div>
+<div id="rightSidebar" class="w-96 flex flex-col gap-4 overflow-y-auto h-full ltr:pr-1 rtl:pl-1 pb-4 transition-all duration-500 flex-shrink-0">
+    
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg flex flex-col flex-shrink-0 transition-all duration-300" style="max-height: 50vh;">
+        <div class="p-3 border-b dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5 cursor-pointer sticky top-0 z-10" onclick="toggleSection('incidentsBody', 'incIcon')">
+            <h3 class="font-bold text-sm dark:text-white"><i class="fa-solid fa-triangle-exclamation text-primary ltr:mr-2 rtl:ml-2"></i> <span data-i18n="dashIncidents">Incidents</span></h3>
+            <div class="flex items-center gap-3"><span id="pendingCountBadge" class="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full font-bold">0</span><i id="incIcon" class="fa-solid fa-chevron-up text-gray-400"></i></div>
+        </div>
+        <div id="incidentsBody" class="overflow-y-auto p-2 space-y-2 transition-all flex-1"></div>
+    </div>
+    
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg flex flex-col flex-shrink-0 transition-all duration-300" style="max-height: 40vh;">
+        <div class="p-3 border-b dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5 cursor-pointer sticky top-0 z-10" onclick="toggleSection('ambWrapper', 'ambIcon')">
+            <h3 class="font-bold text-sm dark:text-white"><i class="fa-solid fa-truck-fast text-success ltr:mr-2 rtl:ml-2"></i> <span data-i18n="dashFleet">Fleet</span></h3>
+            <i id="ambIcon" class="fa-solid fa-chevron-up text-gray-400"></i>
+        </div>
+        <div id="ambWrapper" class="flex flex-col flex-1 overflow-hidden transition-all">
+            <div class="p-2 border-b dark:border-white/5">
+                <input type="text" id="ambulanceSearchInput" placeholder="بحث كود الإسعاف أو السائق..." class="w-full bg-gray-100 dark:bg-gray-800 text-xs px-3 py-2 rounded-lg outline-none text-gray-800 dark:text-white focus:ring-1 focus:ring-success">
+            </div>
+            <div id="ambBody" class="overflow-y-auto p-2 space-y-2 flex-1"></div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg flex flex-col flex-shrink-0 transition-all duration-300" style="max-height: 40vh;">
+        <div class="p-3 border-b dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5 cursor-pointer sticky top-0 z-10" onclick="toggleSection('devBody', 'devIcon')">
+            <h3 class="font-bold text-sm dark:text-white"><i class="fa-solid fa-car text-blue-500 ltr:mr-2 rtl:ml-2"></i> <span data-i18n="dashDevices">Active Devices</span></h3>
+            <i id="devIcon" class="fa-solid fa-chevron-up text-gray-400"></i>
+        </div>
+        <div id="devBody" class="flex flex-col flex-1 overflow-hidden transition-all">
+            <div class="p-2 border-b dark:border-white/5">
+                <input type="text" id="deviceSearchInput" data-i18n-placeholder="searchDevicePlaceholder" placeholder="Search ID or Owner..." class="w-full bg-gray-100 dark:bg-gray-800 text-xs px-3 py-2 rounded-lg outline-none text-gray-800 dark:text-white focus:ring-1 focus:ring-blue-500">
+            </div>
+            <div id="devicesPanelList" class="overflow-y-auto p-2 space-y-2 flex-1"></div>
+        </div>
+    </div>
+</div>
                 <div id="detailsPanel" class="absolute top-4 right-4 rtl:left-4 rtl:right-auto w-80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl p-5 transform translate-x-[120%] rtl:-translate-x-[120%] transition-transform duration-500 z-[500] flex flex-col gap-4">
                     <div class="flex justify-between items-center border-b dark:border-white/10 pb-3"><h3 id="panelTitle" class="font-black text-lg dark:text-white" data-i18n="panelDetailsTitle">Details</h3><button onclick="document.getElementById('detailsPanel').classList.add(document.documentElement.dir === 'rtl' ? '-translate-x-[120%]' : 'translate-x-[120%]')" class="text-gray-500 hover:text-primary"><i class="fa-solid fa-xmark text-xl"></i></button></div>
                     <div id="panelContent" class="text-sm text-gray-600 dark:text-gray-300 space-y-3"></div>
@@ -544,18 +591,41 @@
         </div>
     </div>
 </div>
-    <div id="viewDetailsModal" class="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
-        <div class="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden border border-gray-200 dark:border-gray-700">
-            <div class="p-4 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-white/5">
-                <h3 class="font-black text-lg dark:text-white"><i class="fa-solid fa-address-card text-blue-500 ltr:mr-2 rtl:ml-2"></i> <span data-i18n="modalViewUserTitle">User Profile</span></h3>
-                <button type="button" onclick="closeDetailsModal('viewDetailsModal')" class="text-gray-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+<div id="viewUserDetailsModal" class="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
+    <div class="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-2xl shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden border border-gray-200 dark:border-gray-700 max-h-[90vh] flex flex-col">
+        <div class="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+            <h3 class="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-address-card text-primary"></i> <span data-i18n="userDetails">ملف المستخدم</span>
+            </h3>
+            <button onclick="closeDetailsModal('viewUserDetailsModal')" class="text-gray-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="p-6 overflow-y-auto custom-scrollbar">
+            <div class="flex items-start gap-4 mb-2">
+                <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl font-black shrink-0">
+                    <i class="fa-solid fa-user"></i>
+                </div>
+                <div class="flex-1">
+                    <h4 id="viewUserName" class="text-xl font-black mb-1">...</h4>
+                    <div class="text-sm text-gray-500 mb-2" id="viewUserEmail">...</div>
+                    <div class="flex gap-2">
+                        <span id="viewUserRole" class="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-500">...</span>
+                        <span id="viewUserStatus" class="px-3 py-1 rounded-full text-xs font-bold">...</span>
+                    </div>
+                </div>
+                <div class="text-right border-l rtl:border-r rtl:border-l-0 border-gray-200 dark:border-gray-700 px-4">
+                    <div class="text-xs text-gray-500 mb-1">رقم الهاتف</div>
+                    <div id="viewUserPhone" class="font-bold text-sm" dir="ltr">...</div>
+                </div>
             </div>
-            <div class="p-6 space-y-4 text-sm text-left rtl:text-right" id="viewDetailsContent"></div>
-            <div class="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 flex justify-end">
-                <button type="button" onclick="closeDetailsModal('viewDetailsModal')" class="px-6 py-2 text-sm font-bold bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg transition-colors" data-i18n="btnClose">Close</button>
-            </div>
+
+            <div id="viewUserExtraDetails" class="hidden border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+                </div>
+        </div>
+        <div class="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end">
+            <button onclick="closeDetailsModal('viewUserDetailsModal')" class="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white font-bold rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" data-i18n="close">إغلاق</button>
         </div>
     </div>
+</div>
 
     <div id="hospitalModal" class="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
         <div class="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-2xl shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
@@ -779,7 +849,113 @@
                     </div>
                 </div>
             </div>
+<section id="settings" class="hidden w-full h-full p-4 md:p-8 overflow-y-auto custom-scrollbar">
+    <div class="max-w-5xl mx-auto space-y-6 animate-fade-in">
+        
+        <div class="flex items-center gap-3 mb-8">
+            <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary text-2xl shadow-inner">
+                <i class="fa-solid fa-cogs"></i>
+            </div>
+            <div>
+                <h2 class="text-3xl font-black text-secondary dark:text-white tracking-tight" data-i18n="systemSettingsTitle">إعدادات النظام المركزية</h2>
+                <p class="text-sm text-gray-500 font-medium" data-i18n="systemSettingsDesc">تحكم في بيئة التشغيل، متغيرات الذكاء الاصطناعي، وخصائص التتبع اللحظي.</p>
+            </div>
+        </div>
+        
+        <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+            <div class="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20">
+                <h3 class="text-lg font-bold flex items-center gap-2 text-gray-800 dark:text-white">
+                    <i class="fa-solid fa-network-wired text-primary"></i> <span data-i18n="opMode">نمط التشغيل (Operation Mode)</span>
+                </h3>
+            </div>
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <label class="relative flex flex-col p-6 border-2 border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:bg-primary/5 hover:border-primary/30 dark:hover:bg-primary/10 transition-all duration-300 group">
+                    <input type="radio" name="systemMode" value="simulation" class="absolute top-6 right-6 rtl:left-6 rtl:right-auto w-5 h-5 accent-primary">
+                    <span class="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-full flex items-center justify-center text-xl mb-4 group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-vr-cardboard"></i>
+                    </span>
+                    <span class="font-black text-xl text-gray-800 dark:text-white mb-2" data-i18n="modeSim">وضع المحاكاة (Simulation)</span>
+                    <span class="text-sm text-gray-500 leading-relaxed" data-i18n="modeSimDesc">توليد حوادث افتراضية وتحريك سيارات الإسعاف والمدنيين بواسطة الذكاء الاصطناعي لأغراض الاختبار والتطوير.</span>
+                </label>
 
+                <label class="relative flex flex-col p-6 border-2 border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:bg-green-500/5 hover:border-green-500/30 dark:hover:bg-green-500/10 transition-all duration-300 group">
+                    <input type="radio" name="systemMode" value="real" class="absolute top-6 right-6 rtl:left-6 rtl:right-auto w-5 h-5 accent-green-500">
+                    <span class="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center text-xl mb-4 group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-satellite-dish"></i>
+                    </span>
+                    <span class="font-black text-xl text-gray-800 dark:text-white mb-2" data-i18n="modeReal">الوضع الحقيقي (Live Action)</span>
+                    <span class="text-sm text-gray-500 leading-relaxed" data-i18n="modeRealDesc">إيقاف محرك الذكاء الاصطناعي والاعتماد كلياً على الإحداثيات الحقيقية الواردة من أجهزة المستخدمين وتابلت الإسعاف.</span>
+                </label>
+
+            </div>
+        </div>
+
+        <div id="simSettingsPanel" class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden transition-all duration-500">
+            <div class="p-6 border-b border-gray-100 dark:border-gray-800 bg-purple-50/50 dark:bg-purple-900/10">
+                <h3 class="text-lg font-bold flex items-center gap-2 text-purple-700 dark:text-purple-400">
+                    <i class="fa-solid fa-microchip"></i> <span data-i18n="simVariables">متغيرات محرك المحاكاة (AI Engine)</span>
+                </h3>
+            </div>
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                <div class="space-y-2">
+                    <div class="flex justify-between items-end">
+                        <label class="text-sm font-bold text-gray-700 dark:text-gray-300">سرعة الإسعاف أثناء الاستجابة</label>
+                        <span class="px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg text-xs font-mono font-bold" id="ambSpeedVal">600 km/h</span>
+                    </div>
+                    <input type="range" id="simAmbSpeed" min="60" max="1500" step="20" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 dark:bg-gray-700">
+                    <p class="text-[10px] text-gray-400">تحدد سرعة تحرك الإسعاف نحو الحادث والمستشفى.</p>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex justify-between items-end">
+                        <label class="text-sm font-bold text-gray-700 dark:text-gray-300">سرعة سيارات المدنيين</label>
+                        <span class="px-3 py-1 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400 rounded-lg text-xs font-mono font-bold" id="carSpeedVal">200 km/h</span>
+                    </div>
+                    <input type="range" id="simCarSpeed" min="40" max="800" step="10" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-600 dark:bg-gray-700">
+                    <p class="text-[10px] text-gray-400">سرعة تجول السيارات العادية على الخريطة.</p>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex justify-between items-end">
+                        <label class="text-sm font-bold text-gray-700 dark:text-gray-300">نطاق الدوريات (Patrol Radius)</label>
+                        <span class="px-3 py-1 bg-warning/20 text-warning rounded-lg text-xs font-mono font-bold" id="patrolRadVal">0.03</span>
+                    </div>
+                    <input type="range" id="simPatrolRad" min="0.01" max="0.15" step="0.005" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-warning dark:bg-gray-700">
+                    <p class="text-[10px] text-gray-400">نطاق انتشار الإسعافات في حالة الخمول.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="liveSettingsPanel" class="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+             <div class="p-6 border-b border-gray-100 dark:border-gray-800 bg-green-50/50 dark:bg-green-900/10">
+                <h3 class="text-lg font-bold flex items-center gap-2 text-green-700 dark:text-green-400">
+                    <i class="fa-solid fa-location-crosshairs"></i> <span data-i18n="liveVariables">خصائص التتبع والخريطة</span>
+                </h3>
+            </div>
+            <div class="p-6">
+                <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <div>
+                        <h4 class="font-bold text-gray-800 dark:text-white">تتبع سيارات المستخدمين (المدنيين)</h4>
+                        <p class="text-xs text-gray-500 mt-1">تفعيل أو إيقاف ظهور سيارات الأفراد على الخريطة لتخفيف التشويش البصري عند زيادة العدد.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="settingTrackCivilians" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] rtl:after:right-[2px] rtl:after:left-auto after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-500 peer-checked:bg-success"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="sticky bottom-4 z-50 flex justify-end mt-8">
+            <button id="saveGlobalSettingsBtn" class="bg-primary text-white px-10 py-4 rounded-xl font-black text-lg hover:bg-red-700 hover:shadow-primary/30 transition-all duration-300 shadow-2xl flex items-center gap-3 active:scale-95">
+                <i class="fa-solid fa-cloud-arrow-up"></i> حفظ وتطبيق على النظام
+            </button>
+        </div>
+
+    </div>
+</section>
    <div id="customConfirmModal" class="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
         <div class="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden border border-gray-200 dark:border-gray-700">
             <div class="p-6 text-center">
@@ -872,46 +1048,69 @@ window.closeConfirmModal = function() {
             }
         };
 
-        function toggleSection(bodyId, iconId) {
-            const body = document.getElementById(bodyId);
-            const icon = document.getElementById(iconId);
-            if (body.classList.contains('hidden')) {
-                body.classList.remove('hidden');
-                icon.classList.replace('fa-chevron-down', 'fa-chevron-up');
-            } else {
-                body.classList.add('hidden');
-                icon.classList.replace('fa-chevron-up', 'fa-chevron-down');
-            }
+function toggleSection(bodyId, iconId) {
+    const body = document.getElementById(bodyId);
+    const icon = document.getElementById(iconId);
+    if (body.classList.contains('hidden')) {
+        body.classList.remove('hidden');
+        if(body.getAttribute('data-was-flex') === 'true') body.classList.add('flex'); // إعادة الفليكس لو كان موجوداً
+        icon.classList.replace('fa-chevron-down', 'fa-chevron-up');
+    } else {
+        if(body.classList.contains('flex')) {
+            body.classList.remove('flex'); // إزالة الفليكس مؤقتاً لكي يختفي
+            body.setAttribute('data-was-flex', 'true');
         }
+        body.classList.add('hidden');
+        icon.classList.replace('fa-chevron-up', 'fa-chevron-down');
+    }
+}
+
+
+
 
 let isLeftOpen = true;
-function toggleLeftSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const texts = document.querySelectorAll('.nav-text');
-    const logo = document.getElementById('logoText'); // This is null, which is fine now
-    
-    isLeftOpen = !isLeftOpen;
-    
-    if(isLeftOpen) {
-        sidebar.classList.remove('w-20'); 
-        sidebar.classList.add('w-64');
-        setTimeout(() => { 
-            texts.forEach(t => t.classList.remove('hidden')); 
-            // Safety check added here
-            if (logo) logo.classList.remove('hidden'); 
-        }, 150);
-    } else {
-        texts.forEach(t => t.classList.add('hidden')); 
-        // Safety check added here
-        if (logo) logo.classList.add('hidden');
-        
-        sidebar.classList.remove('w-64'); 
-        sidebar.classList.add('w-20');
-    }
-    
-    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 300);
-}
-        let isRightOpen = true;
+        window.toggleLeftSidebar = function() {
+            const sidebar = document.getElementById('sidebar');
+            const header = document.getElementById('sidebarHeader');
+            const texts = document.querySelectorAll('.nav-text');
+            const fullLogo = document.getElementById('fullLogo');
+            const miniLogo = document.getElementById('miniLogo');
+            const hamburgerBtn = document.getElementById('hamburgerBtn');
+            
+            isLeftOpen = !isLeftOpen;
+            
+            if(isLeftOpen) {
+                // حالة الفتح: تكبير العرض وإرجاع الحواف
+                sidebar.classList.replace('w-20', 'w-64');
+                header.classList.replace('px-0', 'px-6');
+                header.classList.replace('justify-center', 'justify-between');
+                
+                // إظهار اللوجو الكامل وزر الهامبرجر
+                miniLogo.classList.add('hidden');
+                fullLogo.classList.remove('hidden');
+                hamburgerBtn.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    texts.forEach(t => t.classList.remove('hidden', 'opacity-0'));
+                }, 150);
+            } else {
+                // حالة القفل: تصغير العرض وإلغاء الحواف ليتوسط اللوجو المصغر
+                sidebar.classList.replace('w-64', 'w-20');
+                header.classList.replace('px-6', 'px-0');
+                header.classList.replace('justify-between', 'justify-center');
+                
+                texts.forEach(t => t.classList.add('hidden', 'opacity-0'));
+                
+                // إخفاء اللوجو الكامل وإظهار اللوجو المصغر
+                fullLogo.classList.add('hidden');
+                hamburgerBtn.classList.add('hidden');
+                miniLogo.classList.remove('hidden');
+            }
+            
+            setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 300);
+        }
+
+let isRightOpen = true;
         function toggleRightSidebar() {
             const sidebar = document.getElementById('rightSidebar');
             const btnText = document.getElementById('toggleMapBtnText');
@@ -956,6 +1155,8 @@ function toggleLeftSidebar() {
     <script type="module" src="../js/admin/logs.js"></script>
     <script type="module" src="../js/admin/incidents.js"></script>
     <script type="module" src="../js/admin/applications.js"></script>
+    <script type="module" src="../js/admin/settings.js"></script>
+
     <script type="module" src="../js/admin/main.js"></script>
 </body>
 </html>

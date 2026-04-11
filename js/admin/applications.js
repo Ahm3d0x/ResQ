@@ -1,6 +1,19 @@
 import { supabase, DB_TABLES } from '../config/supabase.js';
 import { t } from '../core/language.js';
+// ==========================================
+// 🛡️ تسجيل الحركات (Audit Log)
+// ==========================================
+const sessionString = localStorage.getItem('resq_custom_session');
+const currentAdminId = sessionString ? JSON.parse(sessionString).id : null;
 
+async function logSystemAction(action, targetTable, targetId, note) {
+    if (!currentAdminId) return;
+    try {
+        await supabase.from('audit_admin_changes').insert([{
+            admin_user_id: currentAdminId, action: action, target_table: targetTable, target_id: targetId, note: note
+        }]);
+    } catch (error) { console.error("Audit Log Failed:", error); }
+}
 const tbody = document.getElementById('applicationsTableBody');
 let allApps = [];
 
@@ -29,22 +42,71 @@ window.closeInputModal = function() {
     setTimeout(() => { m.classList.add('hidden'); }, 300);
 };
 
+// ==========================================
+// 1. تحميل وعرض البيانات (مع دعم الترجمة)
+// ==========================================
 window.loadApplicationsData = async function() {
     if(!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-500"><i class="fa-solid fa-circle-notch fa-spin text-2xl"></i> ${t('loading')}</td></tr>`;
     
-    const { data, error } = await supabase.from('device_applications').select('*').order('created_at', { ascending: false });
-    
+    // إظهار حالة التحميل مع الترجمة
+    tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-gray-500"><i class="fa-solid fa-circle-notch fa-spin text-2xl mb-2"></i><br>${t('loading') || 'Loading applications...'}</td></tr>`;
+
+    const { data, error } = await supabase
+        .from('device_applications')
+        .select('*')
+        .order('created_at', { ascending: false });
+
     if (error) {
-        window.showToast("Failed to load applications.", "error");
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-red-500">Error loading data.</td></tr>`;
+        window.showToast("Error loading applications: " + error.message, "error");
+        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-500 font-bold">Failed to load data.</td></tr>`;
         return;
     }
-    
+
     allApps = data || [];
-    applyAppFilters();
+    renderApplications();
 };
 
+// دالة رسم الجدول
+function renderApplications() {
+    if(!tbody) return;
+    tbody.innerHTML = '';
+
+    if(allApps.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-gray-500 font-bold">${t('noData') || 'No applications found.'}</td></tr>`;
+        return;
+    }
+
+    allApps.forEach(app => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-white/5';
+        
+        // 🌟 الترجمة اللحظية للحالة باستخدام t()
+        const statusText = t('status_' + app.status) || app.status;
+        
+        // تحديد لون الحالة
+        let badgeClass = 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500';
+        if (app.status === 'approved') badgeClass = 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-500';
+        if (app.status === 'rejected') badgeClass = 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-500';
+
+        tr.innerHTML = `
+            <td class="p-4 font-bold text-primary">#${app.id}</td>
+            <td class="p-4 font-bold text-gray-800 dark:text-white">${app.full_name}</td>
+            <td class="p-4">
+                <div class="text-sm font-bold">${app.car_brand} ${app.car_model}</div>
+                <div class="text-xs text-gray-500">${app.car_plate}</div>
+            </td>
+            <td class="p-4">
+                <span class="px-3 py-1 rounded-full text-xs font-bold ${badgeClass}">${statusText}</span>
+            </td>
+            <td class="p-4">
+                <button onclick="viewApplication(${app.id})" class="text-blue-500 hover:text-blue-700 font-bold px-3 py-1 bg-blue-50 dark:bg-blue-900/20 rounded-lg transition-colors">
+                    <i class="fa-solid fa-eye"></i> ${t('view') || 'View'}
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
 window.addEventListener('languageChanged', () => {
     applyAppFilters();
 });
@@ -260,7 +322,8 @@ const { error: aErr } = await supabase.from('device_applications').update({
 
                 // 5. إرسال الإيميل للمستخدم ببيانات الدخول
                 await sendAppEmail(app, 'approved', { password: pwd });
-
+// تسجيل حركة القبول وإنشاء الأجهزة
+                await logSystemAction('UPDATE', 'device_applications', id, `Approved application for: ${app.full_name}, Device: ${devUid} created`);
                 window.showToast(`Success! Device ${devUid} provisioned. Email sent.`, 'success');
                 window.closeDetailsModal('viewAppModal');
                 await loadApplicationsData();
@@ -300,7 +363,8 @@ window.processAppStatus = function(id, newStatus) {
                     await sendAppEmail(app, 'rejected', { reason: reason || 'لا يستوفي الشروط حالياً' });
                 }
             }
-
+// تسجيل الحركة
+            await logSystemAction('UPDATE', 'device_applications', id, `Marked application #${id} as ${newStatus}. Reason: ${reason || 'None'}`);
             window.showToast(`Application marked as ${newStatus}.`, 'success');
             window.closeDetailsModal('viewAppModal');
             await loadApplicationsData();

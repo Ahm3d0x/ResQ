@@ -1,5 +1,18 @@
 import { supabase, DB_TABLES } from '../config/supabase.js';
+// ==========================================
+// 🛡️ تسجيل الحركات (Audit Log)
+// ==========================================
+const sessionString = localStorage.getItem('resq_custom_session');
+const currentAdminId = sessionString ? JSON.parse(sessionString).id : null;
 
+async function logSystemAction(action, targetTable, targetId, note) {
+    if (!currentAdminId) return;
+    try {
+        await supabase.from('audit_admin_changes').insert([{
+            admin_user_id: currentAdminId, action: action, target_table: targetTable, target_id: targetId, note: note
+        }]);
+    } catch (error) { console.error("Audit Log Failed:", error); }
+}
 const tbody = document.getElementById('ambulancesTableBody');
 const modal = document.getElementById('ambulanceModal');
 const form = document.getElementById('ambulanceForm');
@@ -301,14 +314,12 @@ window.closeAmbulanceModal = function() {
     modal.children[0].classList.add('scale-95');
     setTimeout(() => { modal.classList.add('hidden'); }, 300);
 };
+// داخل form.addEventListener('submit', ...)
 
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('saveAmbBtn');
     const originalText = btn.innerText;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
-    btn.disabled = true;
-
     const id = document.getElementById('ambId').value;
     const driverId = document.getElementById('ambDriverId').value;
 
@@ -321,28 +332,63 @@ form.addEventListener('submit', async (e) => {
     };
 
     try {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+        btn.disabled = true;
+
+        // 🛡️ منع تكرار السائق لسيارة أخرى
+        if (ambData.driver_id) {
+            const { data: duplicate } = await supabase
+                .from(DB_TABLES.AMBULANCES)
+                .select('id, code')
+                .eq('driver_id', ambData.driver_id)
+                .neq('id', id || -1);
+
+            if (duplicate && duplicate.length > 0) {
+                window.showToast(`هذا السائق مرتبط بالفعل بسيارة إسعاف أخرى (${duplicate[0].code})`, "error");
+                return;
+            }
+        }
+
         if (id) {
             const { error } = await supabase.from(DB_TABLES.AMBULANCES).update(ambData).eq('id', id);
             if (error) throw error;
+            await logSystemAction('UPDATE', 'ambulances', id, `Updated ambulance unit: ${ambData.code}`);
         } else {
-            const { error } = await supabase.from(DB_TABLES.AMBULANCES).insert([ambData]);
+            const { data: newAmb, error } = await supabase.from(DB_TABLES.AMBULANCES).insert([ambData]).select().single();
             if (error) throw error;
+            if (newAmb) {
+                await logSystemAction('CREATE', 'ambulances', newAmb.id, `Added new ambulance unit: ${ambData.code}`);
+            }
         }
         
+        window.showToast("تم حفظ بيانات الوحدة بنجاح", "success");
         closeAmbulanceModal();
         await window.loadAmbulancesData();
     } catch (error) {
-        alert("Operation Failed. Ensure the Unit Code is unique.\nError: " + error.message);
+        window.showToast("فشلت العملية: تأكد من أن كود الوحدة غير مكرر", "error");
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
     }
 });
 
-window.deleteAmbulance = async function(id) {
-    if(confirm("DANGER: Are you sure you want to permanently remove this ambulance from the fleet?")) {
-        const { error } = await supabase.from(DB_TABLES.AMBULANCES).delete().eq('id', id);
-        if(error) alert("Deletion Failed: " + error.message);
-        else await window.loadAmbulancesData();
-    }
+// استبدال دالة الحذف بنظام الـ Modal المخصص
+window.deleteAmbulance = function(id) {
+    const amb = allAmbulances.find(a => a.id === id);
+    const code = amb ? amb.code : id;
+
+    window.openConfirmModal(
+        "حذف سيارة إسعاف", 
+        `هل أنت متأكد من حذف الوحدة (${code}) نهائياً من الأسطول؟`, 
+        async () => {
+            const { error } = await supabase.from(DB_TABLES.AMBULANCES).delete().eq('id', id);
+            if(error) {
+                window.showToast("فشل الحذف: " + error.message, "error");
+            } else {
+                await logSystemAction('DELETE', 'ambulances', id, `Deleted ambulance unit: ${code}`);
+                window.showToast('تم حذف الوحدة بنجاح', 'success');
+                await window.loadAmbulancesData();
+            }
+        }
+    );
 };

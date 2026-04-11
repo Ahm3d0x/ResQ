@@ -40,7 +40,7 @@ export const DB_TABLES = {
     INCIDENT_LOGS: 'incident_logs',
     VISITOR_SEARCHES: 'visitor_searches',
     NOTIFICATIONS: 'notifications',
-    SETTINGS: 'settings'
+    SETTINGS: 'system_settings'
 };
 
 export const ROLES = {
