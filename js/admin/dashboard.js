@@ -1,9 +1,10 @@
 // ============================================================================
-// 🎛️ EnQaZ Dashboard Controller (Luxury View & Telemetry Receiver) - V3.4
+// 🎛️ EnQaZ Dashboard Controller (Luxury View & Telemetry Receiver) - V4.0
 // ============================================================================
 
 import { supabase, DB_TABLES } from '../config/supabase.js';
 import { MapEngine, SIM_CONFIG } from './mapEngine.js';
+    const SMOOTHING_FACTOR = 0.001; // نعومة فائقة للحركة
 
 // 📡 إنشاء الاتصال بقناة البث اللحظي القادمة من المايكرو-سيرفر (Engine)
 export const trackingChannel = supabase.channel('live-tracking');
@@ -25,48 +26,60 @@ window.lastUiUpdateTime = 0;
 // متغيرات التحكم في الكاميرا
 let targetCameraPos = null;
 let currentCameraPos = null;
-const SMOOTHING_FACTOR = 0.07; // كلما قل الرقم زادت النعومة (0.05 - 0.1)
+window.isUserInteracting = false;
+window.interactionTimeout = null;
 
+// 🎥 نظام الكاميرا السينمائي المطور (Anti-Fight System)
 function startSmoothCameraLoop() {
-    // 🛡️ مراقبة تفاعل المستخدم لمنع تعارض الكاميرا مع السحب اليدوي والزووم
-    if (MapEngine.map) {
-        MapEngine.map.on('zoomstart movestart dragstart', () => {
-            MapEngine.isMapInteracting = true;
-        });
+    const mapContainer = document.getElementById('adminMap');
+    if (mapContainer) {
+        // 🌟 إيقاف الكاميرا فوراً بمجرد لمس المستخدم للشاشة لمنع التقطيع
+        const pauseTracking = () => { window.isUserInteracting = true; };
+        // 🌟 استئناف الكاميرا بعد التوقف عن اللمس بـ 1.5 ثانية
+        const resumeTracking = () => { 
+            clearTimeout(window.interactionTimeout);
+            window.interactionTimeout = setTimeout(() => { window.isUserInteracting = false; }, 1500); 
+        };
+
+        mapContainer.addEventListener('mousedown', pauseTracking);
+        mapContainer.addEventListener('touchstart', pauseTracking, {passive: true});
+        mapContainer.addEventListener('wheel', pauseTracking, {passive: true});
         
-        MapEngine.map.on('zoomend moveend dragend', () => {
-            // تأخير نصف ثانية بعد توقف المستخدم عن السحب لضمان عودة ناعمة للتتبع
-            setTimeout(() => { 
-                MapEngine.isMapInteracting = false; 
-            }, 500);
-        });
+        window.addEventListener('mouseup', resumeTracking);
+        window.addEventListener('touchend', resumeTracking);
+        mapContainer.addEventListener('wheel', resumeTracking, {passive: true});
     }
 
-    const SMOOTHING_FACTOR = 0.08; // معامل النعومة (0.05 إلى 0.1)
 
     const loop = () => {
-        // نتحقق من وجود تتبع + وجود هدف + المستخدم لا يلمس الخريطة
-        if (MapEngine.trackedEntity && MapEngine.targetCameraPos && !MapEngine.isMapInteracting) {
+        // التتبع يعمل فقط إذا كان هناك هدف، والمستخدم لا يلمس الخريطة حالياً
+        if (MapEngine.trackedEntity && MapEngine.targetCameraPos && !window.isUserInteracting) {
             
             if (!MapEngine.currentCameraPos) {
                 MapEngine.currentCameraPos = { ...MapEngine.targetCameraPos };
             }
 
-            // معادلة التحريك الخطي (Lerp) لحركة فائقة النعومة
+            // معادلة التحريك الخطي (Lerp)
             MapEngine.currentCameraPos.lat += (MapEngine.targetCameraPos.lat - MapEngine.currentCameraPos.lat) * SMOOTHING_FACTOR;
             MapEngine.currentCameraPos.lng += (MapEngine.targetCameraPos.lng - MapEngine.currentCameraPos.lng) * SMOOTHING_FACTOR;
 
-            // تحريك الخريطة بدون أي Animation داخلي لمنع التقطيع
-            MapEngine.map.setView(
-                [MapEngine.currentCameraPos.lat, MapEngine.currentCameraPos.lng], 
-                MapEngine.map.getZoom(), 
-                { animate: false }
-            );
+            const distLat = Math.abs(MapEngine.targetCameraPos.lat - MapEngine.currentCameraPos.lat);
+            const distLng = Math.abs(MapEngine.targetCameraPos.lng - MapEngine.currentCameraPos.lng);
+
+            // تحديث الكاميرا فقط إذا كانت المسافة تستحق (لتخفيف الضغط وتقليل الـ Jitter)
+            if (distLat > 0.00001 || distLng > 0.00001) {
+                MapEngine.map.setView(
+                    [MapEngine.currentCameraPos.lat, MapEngine.currentCameraPos.lng], 
+                    MapEngine.map.getZoom(), 
+                    { animate: false }
+                );
+            }
         }
         requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
 }
+
 /**
  * 📝 تسجيل إجراءات الإدارة في سجل النظام
  */
@@ -88,7 +101,6 @@ async function logSystemAction(action, targetTable, targetId, note) {
  */
 export async function initDashboard() {
     try {
-        // جلب الإعدادات من قاعدة البيانات
         const { data: settings } = await supabase.from(DB_TABLES.SETTINGS).select('*');
         if (settings) {
             settings.forEach(s => {
@@ -99,9 +111,11 @@ export async function initDashboard() {
         }
     } catch (err) { console.warn("Failed to load global settings", err); }
 
-    // تهيئة محرك الخريطة الأساسي
     MapEngine.init('adminMap', 30.0444, 31.2357, (type, id) => window.openPanel(type, id));
     
+    // 🌟 استدعاء واجهة البوصلة المطورة
+    addCompassUI();
+
     const mapToggleBtn = document.getElementById('toggleUsersMap');
     if (SysSettings.trackCivilians === false) {
         MapEngine.toggleLayer('devices', false);
@@ -111,16 +125,68 @@ export async function initDashboard() {
         if(mapToggleBtn) mapToggleBtn.checked = true;
     }
 
-    // جلب البيانات وبدء الاستماع
     await loadEntities();
     await loadDevices();
     
     setupDatabaseRealtime(); 
     setupLiveTelemetry();    
-    startSmoothCameraLoop(); // 🌟 تشغيل محرك الكاميرا السينمائي
+    startSmoothCameraLoop(); 
 
     window.addEventListener('languageChanged', () => window.updateAllUI());
 }
+
+/**
+ * 🧭 دالة إضافة واجهة البوصلة (Compass UI) المحدثة بالدوران الحر
+ */
+function addCompassUI() {
+    const mapContainer = document.getElementById('mapContainer');
+    if (!mapContainer || document.getElementById('compassUI')) return;
+
+    const compassHtml = `
+        <div id="compassUI" class="absolute top-4 left-1/2 transform -translate-x-1/2 z-[500] bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl px-5 py-3 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col items-center gap-3 transition-all duration-300 w-64">
+            <div class="flex items-center justify-between w-full">
+                <div class="text-[10px] font-black text-gray-500 uppercase tracking-widest"><i class="fa-regular fa-compass"></i> البوصلة</div>
+                <div class="flex items-center gap-1">
+                    <button onclick="window.rotateMap(0)" class="w-6 h-6 bg-gray-100 dark:bg-gray-800 hover:bg-primary hover:text-white text-gray-700 dark:text-gray-300 rounded-full font-black text-[9px] transition-all shadow-sm">N</button>
+                    <button onclick="window.rotateMap(90)" class="w-6 h-6 bg-gray-100 dark:bg-gray-800 hover:bg-primary hover:text-white text-gray-700 dark:text-gray-300 rounded-full font-black text-[9px] transition-all shadow-sm">E</button>
+                    <button onclick="window.rotateMap(180)" class="w-6 h-6 bg-gray-100 dark:bg-gray-800 hover:bg-primary hover:text-white text-gray-700 dark:text-gray-300 rounded-full font-black text-[9px] transition-all shadow-sm">S</button>
+                    <button onclick="window.rotateMap(270)" class="w-6 h-6 bg-gray-100 dark:bg-gray-800 hover:bg-primary hover:text-white text-gray-700 dark:text-gray-300 rounded-full font-black text-[9px] transition-all shadow-sm">W</button>
+                </div>
+            </div>
+            <div class="w-full border-t border-gray-200 dark:border-gray-700"></div>
+            <div class="flex items-center gap-3 w-full">
+                <i class="fa-solid fa-rotate text-gray-400 text-[10px]"></i>
+                <input type="range" id="freeRotationSlider" min="0" max="360" value="0" step="1" class="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-primary" oninput="window.rotateMap(this.value, true)">
+                <span id="rotationValueDisplay" class="text-[10px] font-mono font-black text-primary w-8 text-right">0°</span>
+            </div>
+        </div>
+    `;
+    mapContainer.insertAdjacentHTML('beforeend', compassHtml);
+}
+
+// 🔄 دوال التحكم في دوران الخريطة والبوصلة (Global)
+window.rotateMap = function(angle, fromSlider = false) {
+    const mapEl = document.getElementById('adminMap');
+    const slider = document.getElementById('freeRotationSlider');
+    const display = document.getElementById('rotationValueDisplay');
+    
+    let safeAngle = parseInt(angle) || 0;
+    if (safeAngle === 360) safeAngle = 0;
+
+    if (mapEl) {
+        // نستخدم Scale ثابت لتجنب الارتجاج عند استخدام السلايدر
+        const scale = safeAngle === 0 ? 1 : 1.4; 
+        mapEl.style.transition = fromSlider ? 'none' : 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        mapEl.style.transform = `scale(${scale}) rotate(${safeAngle}deg)`;
+    }
+
+    if (slider && !fromSlider) slider.value = safeAngle;
+    if (display) display.innerText = safeAngle + '°';
+};
+
+window.resetMapRotation = function() {
+    window.rotateMap(0);
+};
 
 /**
  * 📥 جلب البيانات الأساسية من الداتابيز
@@ -220,32 +286,35 @@ function setupLiveTelemetry() {
     trackingChannel.subscribe();
 }
 
+/**
+ * 🌟 تحريك وتوجيه المركبات بدقة فائقة
+ */
 function updateMarkerSmoothly(type, id, lat, lng, heading) {
     const strId = String(id);
     const marker = MapEngine.markers[type]?.[strId];
     
     if (marker) {
         const curLatLng = marker.getLatLng();
-        // منع التحديث لو السيارة لم تتحرك
-        if (curLatLng.lat === lat && curLatLng.lng === lng) {
-            if (typeof marker.setRotationAngle === 'function') marker.setRotationAngle(heading);
-            return;
+        const isMoved = curLatLng.lat !== lat || curLatLng.lng !== lng;
+        
+        // 1. تحديث الموقع
+        if (isMoved) {
+            marker.setLatLng([lat, lng]);
         }
 
-        // منع الطيران أثناء الزووم
-        if (MapEngine.map && MapEngine.map._animatingZoom) return;
+        // 2. 🌟 تطبيق الدوران المستقل للأيقونة بناءً على اتجاه السيارة الحقيقي 🌟
+        // نستخدم خاصية rotate بدلاً من transform لتجنب مسح تأثيرات Tailwind
+        if (marker._icon && heading !== undefined) {
+            const iconDiv = marker._icon.firstElementChild; // استهداف الـ Div الداخلي
+            if (iconDiv) {
+                iconDiv.style.transition = 'rotate 1s linear';
+                iconDiv.style.rotate = `${heading}deg`;
+            }
+        }
 
-        // 1. تحريك السيارة (الـ CSS سيجعلها تأخذ 1 ثانية)
-        marker.setLatLng([lat, lng]);
-        if (typeof marker.setRotationAngle === 'function') marker.setRotationAngle(heading);
-
-        // 2. تحريك الكاميرا (نجعل الخريطة تأخذ 1 ثانية أيضاً لتتطابق مع السيارة)
-        if (MapEngine.trackedEntity === `${type}_${strId}` && !MapEngine.isMapInteracting) {
-            MapEngine.map.panTo([lat, lng], {
-                animate: true,
-                duration: 1.0, // 👈 السر هنا: نفس زمن الـ CSS בדיוק !
-                easeLinearity: 1
-            });
+        // 3. تحديث هدف الكاميرا
+        if (MapEngine.trackedEntity === `${type}_${strId}`) {
+            MapEngine.targetCameraPos = { lat, lng };
         }
     }
 }
