@@ -227,7 +227,7 @@ export const DriverApp = {
         else this.startActualGpsTracking();
     },
 
-    startSimulatedTracking() {
+startSimulatedTracking() {
         const trackingChannel = supabase.channel('live-tracking');
         trackingChannel.on('broadcast', { event: 'fleet_update' }, (payload) => {
             if (!this.state.ambulance) return;
@@ -239,8 +239,9 @@ export const DriverApp = {
                 
                 this.state.ambMarker.setLatLng(newLatLng);
 
+                // 🌟 الحل: استخدام panTo بدلاً من setView للنعومة الفائقة
                 if (this.state.isAutoTracking) {
-                    this.state.map.setView(newLatLng, this.state.map.getZoom(), { animate: false });
+                    this.state.map.panTo(newLatLng, { animate: true, duration: 1.0, easeLinearity: 1 });
                 }
                 if (this.state.isCompassLocked && myAmb.heading !== undefined) {
                     window.rotateMap(360 - myAmb.heading);
@@ -491,9 +492,12 @@ export const DriverApp = {
             }
         };
 
-        window.rotateMap = (angle) => {
+window.rotateMap = (angle) => {
             const scale = (angle % 180 !== 0) ? 1.4 : 1.1; 
-            document.getElementById('map-container').style.transform = `scale(${scale}) rotate(${angle}deg)`;
+            const container = document.getElementById('map-container');
+            // إضافة Transition مدمج لمنع الارتعاش
+            container.style.transition = 'transform 1s linear';
+            container.style.transform = `scale(${scale}) rotate(${angle}deg)`;
         };
 
         window.addEventListener('languageChanged', () => {

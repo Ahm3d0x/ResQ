@@ -119,7 +119,7 @@ export const EngineSimulator = {
     },
 
 // ==========================================
-    // 📡 مراقب الأوامر الحية (Live State Watcher)
+    // 📡 2. مراقب الأوامر الحية (Live State Watcher - Ultimate Fix)
     // ==========================================
     setupRealtimeListeners() {
         supabase.channel('simulator-amb-watch')
@@ -128,46 +128,89 @@ export const EngineSimulator = {
             }, async (payload) => {
                 const ambId = payload.new.id;
                 const newStatus = payload.new.status;
-                const mission = this.activeMissions.get(ambId);
+                let mission = this.activeMissions.get(ambId);
 
-                // 1. 🚨 الفرملة الفورية: بمجرد تعيين البلاغ للإسعاف، توقف تماماً وانتظر قرار السائق!
+                // 🚨 1. الفرملة الفورية: تم تعيين المهمة، يجب أن يتوقف لانتظار السائق
                 if (newStatus === 'assigned') {
-                    if (mission && mission.stage === 'patrol') {
-                        EngineUI.log('SIM', `Unit ${payload.new.code} ASSIGNED. Halting movement for 10s...`, 'warn');
+                    if (mission) {
+                        EngineUI.log('SIM', `Unit ${payload.new.code} ASSIGNED. Halting movement...`, 'warn');
                         mission.stage = 'waiting_driver_action';
-                        mission.route = []; // مسح مسار الدورية لإيقاف السيارة فوراً
+                        mission.route = []; // توقف فوري
                     }
+                    return;
                 }
 
-                if (!mission) return;
+                // 🚑 2. السائق أكد الاستلام: يجب أن يتحرك للحادث! (هنا كان النقص)
+                if (newStatus === 'en_route_incident') {
+                    EngineUI.log('SIM', `[ACTION] Unit ${payload.new.code} accepted. Routing to Incident...`, 'info');
 
-                // 2. 🚀 السائق أكد استلام المصاب (توجيه للمستشفى)
+                    // جلب بيانات الحادث والمستشفى بشكل موثوق من الداتابيز
+                    const { data: incData } = await supabase
+                        .from(DB_TABLES.INCIDENTS)
+                        .select('*, hospitals(*)')
+                        .eq('assigned_ambulance_id', ambId)
+                        .in('status', ['assigned', 'in_progress'])
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .single();
+
+                    if (incData && incData.hospitals) {
+                        // إذا لم يكن الإسعاف مسجلاً كنشط، ننشئ له سجلاً للحركة
+                        if (!mission) {
+                            mission = { 
+                                lat: parseFloat(payload.new.lat) || 30.0444, 
+                                lng: parseFloat(payload.new.lng) || 31.2357, 
+                                heading: 0 
+                            };
+                        }
+
+                        // توجيه المحاكي للحادث
+                        this.queueRouteRequest({
+                            incId: incData.id,
+                            amb: { id: ambId, code: payload.new.code },
+                            startCoords: { lat: mission.lat, lng: mission.lng },
+                            targetCoords: { lat: incData.latitude, lng: incData.longitude },
+                            hospCoords: { lat: incData.hospitals.lat, lng: incData.hospitals.lng },
+                            stage: 'to_incident',
+                            speedKph: this.config.AMB_SPEED_EMERGENCY
+                        });
+                    }
+                    return;
+                }
+
+                // --------- المراحل القادمة تتطلب وجود مهمة نشطة مسبقاً ---------
+                if (!mission) return; 
+
+                // 🚀 3. السائق استلم المصاب: يتحرك للمستشفى
                 if (newStatus === 'en_route_hospital' && mission.stage !== 'to_hospital') {
                     EngineUI.log('SIM', `[ACTION] Unit ${payload.new.code} picked up patient. Routing to Hospital...`, 'info');
-                    this.queueRouteRequest({
-                        incId: mission.incId,
-                        amb: mission.amb,
-                        startCoords: { lat: mission.lat, lng: mission.lng },
-                        targetCoords: mission.hospCoords,
-                        hospCoords: mission.hospCoords,
-                        stage: 'to_hospital',
-                        speedKph: this.config.AMB_SPEED_EMERGENCY
-                    });
+                    if (mission.hospCoords) {
+                        this.queueRouteRequest({
+                            incId: mission.incId,
+                            amb: mission.amb,
+                            startCoords: { lat: mission.lat, lng: mission.lng },
+                            targetCoords: mission.hospCoords,
+                            hospCoords: mission.hospCoords,
+                            stage: 'to_hospital',
+                            speedKph: this.config.AMB_SPEED_EMERGENCY
+                        });
+                    }
                 }
                 
-                // 3. 🛑 السائق وصل المستشفى وينتظر
+                // 🛑 4. وصل المستشفى: يتوقف وينتظر الاستلام
                 else if (newStatus === 'busy' && mission.stage !== 'waiting_hospital_action') {
                     EngineUI.log('SIM', `[ACTION] Unit ${payload.new.code} arrived at Hospital. Waiting handover.`, 'warn');
                     mission.stage = 'waiting_hospital_action';
-                    mission.route = []; // التوقف التام في ساحة المستشفى
+                    mission.route = []; // توقف تام في المستشفى
                 }
                 
-                // 4. ✅ المستشفى أكدت الاستلام (عودة للعمل والدوريات)
-                else if (newStatus === 'available' && mission.stage === 'waiting_hospital_action') {
-                    EngineUI.log('SIM', `[ACTION] Unit ${payload.new.code} cleared by Hospital. Returning to field.`, 'success');
-                    this.activeMissions.delete(ambId);
-                    // هنا تبدأ السيارة في العودة/الدورية، وتكون متاحة لبلاغات جديدة فوراً
-                    this.assignPatrol({ id: ambId, code: mission.amb.code, lat: mission.lat, lng: mission.lng });
+                // ✅ 5. المستشفى أكدت الاستلام (أو سُحبت المهمة من السائق لعدم الرد): يعود للعمل
+                else if (newStatus === 'available') {
+                    if (mission.stage === 'waiting_hospital_action' || mission.stage === 'waiting_driver_action') {
+                        EngineUI.log('SIM', `[ACTION] Unit ${payload.new.code} is now Free. Returning to patrol.`, 'success');
+                        this.activeMissions.delete(ambId);
+                        this.assignPatrol({ id: ambId, code: payload.new.code, lat: mission.lat, lng: mission.lng });
+                    }
                 }
             })
             .subscribe();
@@ -280,18 +323,18 @@ export const EngineSimulator = {
     },
 
     listenForDispatch() {
-        window.addEventListener('engine:dispatch_complete', async (e) => {
-            const { incident, ambulance, hospital } = e.detail;
-            this.queueRouteRequest({
-                incId: incident.id,
-                amb: ambulance,
-                startCoords: { lat: parseFloat(ambulance.lat) || 30.0444, lng: parseFloat(ambulance.lng) || 31.2357 },
-                targetCoords: { lat: parseFloat(incident.latitude) || 30.0444, lng: parseFloat(incident.longitude) || 31.2357 },
-                hospCoords: { lat: parseFloat(hospital.lat) || 30.0444, lng: parseFloat(hospital.lng) || 31.2357 },
-                stage: 'to_incident',
-                speedKph: this.config.AMB_SPEED_EMERGENCY
-            });
-        });
+        // window.addEventListener('engine:dispatch_complete', async (e) => {
+        //     const { incident, ambulance, hospital } = e.detail;
+        //     this.queueRouteRequest({
+        //         incId: incident.id,
+        //         amb: ambulance,
+        //         startCoords: { lat: parseFloat(ambulance.lat) || 30.0444, lng: parseFloat(ambulance.lng) || 31.2357 },
+        //         targetCoords: { lat: parseFloat(incident.latitude) || 30.0444, lng: parseFloat(incident.longitude) || 31.2357 },
+        //         hospCoords: { lat: parseFloat(hospital.lat) || 30.0444, lng: parseFloat(hospital.lng) || 31.2357 },
+        //         stage: 'to_incident',
+        //         speedKph: this.config.AMB_SPEED_EMERGENCY
+        //     });
+        // });
     },
 
     async queueRouteRequest(missionData) {
