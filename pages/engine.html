@@ -1,4 +1,4 @@
-DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" dir="ltr" class="dark">
 <head>
     <meta charset="UTF-8">
@@ -8,7 +8,10 @@ DOCTYPE html>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600;700&display=swap" rel="stylesheet">
     
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600;700&display=swap" rel="stylesheet">
+
     <script>
+        window.DEBUG = true; // Debug mode active
         tailwind.config = {
             darkMode: 'class',
             theme: {
@@ -22,7 +25,7 @@ DOCTYPE html>
         }
     </script>
     <style>
-        body { background-color: #050505; color: #00ff41; overflow: hidden; }
+        body { background-color: #050505; color: #00ff41; overflow: hidden; transition: background-color 0.2s; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #050505; }
         ::-webkit-scrollbar-thumb { background: #008f11; }
@@ -35,105 +38,237 @@ DOCTYPE html>
         @keyframes blink { 50% { opacity: 0; } }
         .log-entry { animation: slideIn 0.2s ease-out forwards; }
         @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        
+        .alert-flash-red { animation: flashRed 1s ease-out; }
+        .alert-flash-yellow { animation: flashYellow 1s ease-out; }
+        @keyframes flashRed { 0% { background-color: rgba(255, 0, 60, 0.4); } 100% { background-color: transparent; } }
+        @keyframes flashYellow { 0% { background-color: rgba(255, 176, 0, 0.4); } 100% { background-color: transparent; } }
+
+        .alert-flash-yellow { animation: flashYellow 1s ease-out; }
+        @keyframes flashRed { 0% { background-color: rgba(255, 0, 60, 0.4); } 100% { background-color: transparent; } }
+        @keyframes flashYellow { 0% { background-color: rgba(255, 176, 0, 0.4); } 100% { background-color: transparent; } }
     </style>
 </head>
-<body class="h-screen w-screen font-mono text-xs sm:text-sm flex flex-col crt-effect relative">
+<body id="engine-body" class="h-screen w-screen font-mono text-[10px] sm:text-xs flex flex-col relative crt-effect">
 
-    <header class="h-16 border-b border-term-dim/30 bg-term-bg flex items-center justify-between px-6 z-10 shrink-0">
+    <!-- SECURITY LOCK OVERLAY -->
+    <div id="engine-ui-security-layer" class="fixed inset-0 z-[9999] bg-black bg-opacity-95 backdrop-blur-md flex flex-col justify-center items-center text-term-text transition-all duration-500">
+        <i class="fa-solid fa-shield-halved text-6xl mb-4 animate-pulse text-term-dim"></i>
+        <h2 class="text-2xl font-bold uppercase tracking-widest mb-2 shadow-text">EnQaZ Core Security</h2>
+        <div id="sec-layer-text" class="text-sm text-term-dim font-bold mb-6">Initializing Access Gates...</div>
+        
+        <div class="flex gap-4">
+            <button id="sec-btn-takeover" class="hidden px-6 py-2 border border-term-warn text-term-warn hover:bg-term-warn hover:text-black font-bold uppercase transition flex items-center gap-2">
+                <i class="fa-solid fa-bolt"></i> Take Over Session
+            </button>
+            <button id="sec-btn-exit" class="hidden px-6 py-2 border border-term-dim text-term-dim hover:bg-term-dim hover:text-black font-bold uppercase transition flex items-center gap-2">
+                <i class="fa-solid fa-person-walking-arrow-right"></i> Exit Engine
+            </button>
+        </div>
+    </div>
+
+    <!-- TOP BAR (GLOBAL STATS) -->
+    <header class="h-12 border-b border-term-dim/30 bg-term-bg flex items-center justify-between px-6 z-10 shrink-0">
         <div class="flex items-center gap-4">
             <div class="w-3 h-3 bg-term-text rounded-full animate-ping"></div>
-            <h1 class="text-lg font-bold tracking-widest uppercase"><i class="fa-solid fa-microchip mr-2"></i> EnQaZ Core Engine v3.1</h1>
+            <h1 class="text-sm font-bold tracking-widest uppercase"><i class="fa-solid fa-microchip mr-2"></i> EnQaZ Core Engine v4.0</h1>
         </div>
-        <div class="flex items-center gap-6 text-term-dim font-bold">
-            <div id="sys-uptime" title="Uptime">UP: 00:00:00</div>
-            <div id="sys-db" title="Supabase DB State"><i class="fa-solid fa-database mr-1"></i> <span class="text-term-text">DB: CONNECTED</span></div>
-            <div id="sys-broadcast" title="Broadcast Rate"><i class="fa-solid fa-satellite-dish mr-1"></i> <span id="brd-rate" class="text-term-text">0 Hz</span></div>
+        <div class="flex items-center gap-6 font-bold uppercase tracking-wide">
+            <div id="sys-status" class="text-term-dim">Engine: <span id="tel-engine-state" class="text-term-text">ONLINE</span></div>
+            <div title="Supabase DB State" class="text-term-dim"><i class="fa-solid fa-database mr-1"></i> <span id="db-latency" class="text-term-text">0ms</span></div>
+            <div title="OSRM Route Processor" class="text-term-dim"><i class="fa-solid fa-route mr-1"></i> <span id="osrm-status" class="text-term-text">READY</span></div>
+            <div title="Engine Tick Rate" class="text-term-dim"><i class="fa-solid fa-gauge mr-1"></i> <span id="sys-tick" class="text-term-text">0 TPS</span></div>
+            <div title="Active Missions" class="text-term-dim"><i class="fa-solid fa-truck-medical mr-1"></i> <span id="tel-active-missions" class="text-term-text">0</span></div>
         </div>
     </header>
 
-    <main class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden z-10">
+    <!-- MAIN GRID (3 COLUMNS) -->
+    <main class="flex-1 grid grid-cols-12 gap-3 p-3 overflow-hidden z-10 relative">
         
-        <div class="col-span-5 border border-term-dim/30 rounded-lg bg-black flex flex-col overflow-hidden relative shadow-[0_0_15px_rgba(0,255,65,0.1)]">
-            <div class="bg-term-dim/20 px-3 py-1 border-b border-term-dim/30 font-bold text-[10px] uppercase flex justify-between">
-                <span>System_Terminal //</span>
-                <button id="clear-logs-btn" class="hover:text-term-text transition-colors"><i class="fa-solid fa-eraser"></i> Clear</button>
+        <!-- LEFT COLUMN: Terminal & Action Timeline -->
+        <div class="col-span-3 flex flex-col gap-3 h-full overflow-hidden">
+            <div class="flex-1 border border-term-dim/30 rounded bg-black flex flex-col overflow-hidden shadow-[0_0_15px_rgba(0,255,65,0.05)]">
+                <div class="bg-term-dim/20 px-3 py-1 border-b border-term-dim/30 font-bold uppercase flex justify-between">
+                    <span>System_Terminal //</span>
+                    <button id="clear-logs-btn" class="hover:text-white transition-colors"><i class="fa-solid fa-eraser"></i> Clear</button>
+                </div>
+                <div id="terminal-output" class="flex-1 p-2 overflow-y-auto space-y-1">
+                    <div class="text-term-dim">Initializing EnQaZ Core Engine...</div>
+                </div>
+                <div class="p-1 border-t border-term-dim/30 bg-term-bg/50 px-2">
+                    <span class="text-term-text">></span> <span class="blinking-cursor">_</span>
+                </div>
             </div>
-            <div id="terminal-output" class="flex-1 p-3 overflow-y-auto space-y-1">
-                <div class="text-term-dim">Initializing EnQaZ Core Engine...</div>
-                <div class="text-term-dim">Loading modules: incidentLog, dispatch, simulator...</div>
-            </div>
-            <div class="p-3 border-t border-term-dim/30 bg-term-bg/50">
-                <span class="text-term-text">></span> <span class="blinking-cursor">_</span>
-            </div>
-        </div>
 
-        <div class="col-span-4 flex flex-col gap-4 overflow-hidden">
-            <div class="grid grid-cols-2 gap-4 shrink-0">
-                <div class="border border-term-dim/30 rounded-lg p-3 bg-black/50 text-center flex flex-col justify-center">
-                    <div class="text-term-dim text-[10px] uppercase mb-1">Active Incidents</div>
-                    <div id="stat-incidents" class="text-3xl font-bold text-term-alert">0</div>
+            <div class="h-2/5 border border-term-dim/30 rounded bg-black flex flex-col overflow-hidden">
+                <div class="bg-blue-500/20 text-blue-500 px-3 py-1 border-b border-blue-500/30 font-bold uppercase">
+                    <i class="fa-solid fa-list mr-1"></i> Action Timeline
                 </div>
-                <div class="border border-term-dim/30 rounded-lg p-3 bg-black/50 text-center flex flex-col justify-center">
-                    <div class="text-term-dim text-[10px] uppercase mb-1">Available Ambulances</div>
-                    <div id="stat-ambulances" class="text-3xl font-bold text-blue-500">0</div>
-                </div>
-            </div>
-            
-            <div class="flex-1 border border-term-dim/30 rounded-lg bg-[#020202] relative overflow-hidden flex items-center justify-center">
-                <div class="absolute inset-0 border-[0.5px] border-term-dim/10 rounded-full scale-150" style="background: repeating-radial-gradient(circle, transparent, transparent 40px, rgba(0, 143, 17, 0.1) 41px, transparent 42px);"></div>
-                <i class="fa-solid fa-radar fa-spin text-term-dim/20 text-9xl absolute"></i>
-                <div class="z-10 text-center">
-                    <div class="text-term-text/50 font-bold mb-2">SIMULATION RADAR</div>
-                    <div id="radar-status" class="text-term-dim text-[10px]">Awaiting Entities...</div>
+                <div id="event-timeline" class="flex-1 p-2 overflow-y-auto space-y-2">
+                    <div class="text-center text-term-dim/50 mt-2">Awaiting telemetry...</div>
                 </div>
             </div>
         </div>
 
-        <div class="col-span-3 flex flex-col gap-4 overflow-hidden">
-            
-            <div class="flex-1 border border-term-dim/30 rounded-lg bg-black flex flex-col overflow-hidden">
-                <div class="bg-term-warn/20 text-term-warn px-3 py-1 border-b border-term-warn/30 font-bold text-[10px] uppercase">
-                    <i class="fa-solid fa-stopwatch"></i> 10s Watchdog Queue
+        <!-- CENTER COLUMN: Full Height Radar -->
+        <div class="col-span-6 border border-term-dim/30 rounded bg-[#020202] relative flex flex-col items-center justify-center overflow-hidden h-full shadow-[0_0_20px_rgba(0,255,65,0.05)]">
+            <canvas id="radar-canvas" class="z-0 absolute inset-0 w-full h-full"></canvas>
+            <!-- Radar Telemetry Overlay -->
+            <div class="absolute bottom-3 left-3 z-10 bg-black/80 px-3 py-2 rounded border border-term-dim/30 backdrop-blur-sm pointer-events-none">
+                <div class="text-term-text font-bold mb-1 border-b border-term-dim/30 pb-1">RADAR TELEMETRY</div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <div class="text-term-dim">Entities Tracked:</div>
+                    <div id="tel-radar-entities" class="text-right text-white">0</div>
+                    <div class="text-term-dim">Active Paths:</div>
+                    <div id="tel-radar-paths" class="text-right text-term-warn">0</div>
+                    <div class="text-term-dim">Pulse Cycle:</div>
+                    <div id="tel-radar-cycle" class="text-right text-term-dim animate-pulse">SYNC</div>
                 </div>
-                <div id="watchdog-queue" class="flex-1 p-2 overflow-y-auto space-y-2">
-                    <div class="text-center text-term-dim/50 text-[10px] mt-4">Queue is empty</div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Metrics & Queues -->
+        <div class="col-span-3 flex flex-col gap-3 h-full overflow-y-auto pr-1">
+            
+            <!-- Performance Panel -->
+            <div class="border border-term-dim/30 rounded bg-black flex flex-col overflow-hidden shrink-0">
+                <div class="bg-term-dim/20 px-3 py-1 border-b border-term-dim/30 font-bold uppercase"><i class="fa-solid fa-server mr-1"></i> Node Performance</div>
+                <div class="p-2 grid grid-cols-2 gap-2">
+                    <div class="bg-gray-900 p-1.5 rounded text-center border border-gray-800">
+                        <div class="text-term-dim text-[9px] uppercase">Engine FPS</div>
+                        <div id="tel-fps" class="text-base font-bold text-white">0</div>
+                    </div>
+                    <div class="bg-gray-900 p-1.5 rounded text-center border border-gray-800">
+                        <div class="text-term-dim text-[9px] uppercase">API Latency</div>
+                        <div id="tel-api-latency" class="text-base font-bold text-term-warn">0ms</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="flex-1 border border-term-dim/30 rounded-lg bg-black flex flex-col overflow-hidden">
-                <div class="bg-blue-500/20 text-blue-500 px-3 py-1 border-b border-blue-500/30 font-bold text-[10px] uppercase">
-                    <i class="fa-solid fa-route"></i> OSRM Routing Queue
+            <!-- Simulation Metrics Panel -->
+            <div class="border border-term-dim/30 rounded bg-black flex flex-col overflow-hidden shrink-0">
+                <div class="bg-term-dim/20 px-3 py-1 border-b border-term-dim/30 font-bold uppercase"><i class="fa-solid fa-gears mr-1"></i> Simulation Physics</div>
+                <div class="p-2 space-y-1">
+                    <div class="flex justify-between border-b border-dashed border-gray-800 pb-1">
+                        <span class="text-term-dim">Moving Entities</span><span id="tel-sim-moving" class="text-term-text font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between border-b border-dashed border-gray-800 pb-1">
+                        <span class="text-term-dim">Idle Entities</span><span id="tel-sim-idle" class="text-white font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between border-b border-dashed border-gray-800 pb-1">
+                        <span class="text-term-dim">Avg Speed</span><span id="tel-sim-avgspeed" class="text-white font-bold">0 km/h</span>
+                    </div>
+                    <div class="flex justify-between border-b border-dashed border-gray-800 pb-1">
+                        <span class="text-term-dim">To Incident</span><span id="tel-sim-toinc" class="text-term-alert font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-term-dim">To Hospital</span><span id="tel-sim-tohosp" class="text-blue-500 font-bold">0</span>
+                    </div>
                 </div>
-                <div id="routing-queue" class="flex-1 p-2 overflow-y-auto space-y-2">
-                    <div class="text-center text-term-dim/50 text-[10px] mt-4">Queue is empty</div>
+            </div>
+
+            <!-- Database Stats Panel -->
+            <div class="border border-term-dim/30 rounded bg-black flex flex-col overflow-hidden shrink-0">
+                <div class="bg-blue-500/20 px-3 py-1 text-blue-500 border-b border-blue-500/30 font-bold uppercase"><i class="fa-solid fa-network-wired mr-1"></i> Database Telemetry</div>
+                <div class="p-2 grid grid-cols-2 gap-2">
+                    <div class="col-span-2 flex justify-between text-term-dim border-b border-gray-800 pb-1">
+                        <span>Available Units</span><span id="tel-db-avail" class="text-term-text font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between text-term-dim border-b border-dashed border-gray-800 pb-1">
+                        <span>Busy</span><span id="tel-db-busy" class="text-term-warn font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between text-term-dim border-b border-dashed border-gray-800 pb-1">
+                        <span>Patrol</span><span id="tel-db-patrol" class="text-white font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between text-term-dim border-b border-dashed border-gray-800 pb-1">
+                        <span>Active Inc.</span><span id="tel-db-inc-active" class="text-term-alert font-bold">0</span>
+                    </div>
+                    <div class="flex justify-between text-term-dim border-b border-dashed border-gray-800 pb-1">
+                        <span>Comp. Inc.</span><span id="tel-db-inc-comp" class="text-white font-bold">0</span>
+                    </div>
+                    <div class="col-span-2 flex justify-between text-term-dim">
+                        <span>Hosp Beds (Occ/Total)</span><span id="tel-db-beds" class="text-blue-500 font-bold">0 / 0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hybrid Metrics Panel -->
+            <div class="border border-term-dim/30 rounded bg-black flex flex-col overflow-hidden shrink-0">
+                <div class="bg-purple-500/20 px-3 py-1 text-purple-400 border-b border-purple-500/30 font-bold uppercase"><i class="fa-solid fa-brain mr-1"></i> Hybrid Analytics</div>
+                <div class="p-2 space-y-1">
+                    <div class="flex justify-between text-term-dim border-b border-gray-800 pb-1">
+                        <span>Avg TT-Incident</span><span id="tel-hyb-tti" class="text-white font-bold">--</span>
+                    </div>
+                    <div class="flex justify-between text-term-dim border-b border-gray-800 pb-1">
+                        <span>Avg TT-Hospital</span><span id="tel-hyb-tth" class="text-white font-bold">--</span>
+                    </div>
+                    <div class="flex justify-between text-term-dim">
+                        <span>Dispatch Rate</span><span id="tel-hyb-disp" class="text-term-text font-bold">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OSRM Processor Queue -->
+            <div class="h-[120px] border border-term-dim/30 rounded bg-black flex flex-col overflow-hidden shrink-0">
+                <div class="bg-[#ff00e5]/20 text-[#ff00e5] px-3 py-1 border-b border-[#ff00e5]/30 font-bold uppercase flex justify-between">
+                    <span><i class="fa-solid fa-route"></i> OSRM Core</span>
+                    <span id="tel-osrm-ratio" class="text-white">S:0 | F:0</span>
+                </div>
+                <div id="routing-queue" class="flex-1 p-2 overflow-y-auto space-y-1 border-b border-gray-800">
+                    <div class="text-center text-term-dim/50 mt-1">Queue is idle</div>
+                </div>
+                <div class="text-center py-1 text-[#ff00e5] font-bold">Avg Gen: <span id="tel-osrm-avg">0ms</span></div>
+            </div>
+
+            <!-- Hardware Watchdog Queue -->
+            <div class="h-[120px] border border-term-dim/30 rounded bg-black flex flex-col overflow-hidden shrink-0">
+                <div class="bg-term-warn/20 text-term-warn px-3 py-1 border-b border-term-warn/30 font-bold uppercase">
+                    <i class="fa-solid fa-stopwatch"></i> HW Watchdog
+                </div>
+                <div id="watchdog-queue" class="flex-1 p-2 overflow-y-auto space-y-1">
+                    <div class="text-center text-term-dim/50 mt-1">Queue is empty</div>
                 </div>
             </div>
 
         </div>
     </main>
 
-    <footer class="h-14 border-t border-term-dim/30 bg-term-bg flex items-center justify-between px-6 z-10 shrink-0">
-        <div class="text-term-dim text-[10px]">Engine Core running locally. Do not close this tab to keep system functional.</div>
-        <div class="flex gap-3">
-            <button id="btn-sync-db" class="px-4 py-1.5 border border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-black rounded text-[10px] font-bold transition-colors">
-                <i class="fa-solid fa-cloud-arrow-up"></i> FORCE SYNC DB
-            </button>
-            <button id="btn-kill-switch" class="px-4 py-1.5 border border-term-alert text-term-alert hover:bg-term-alert hover:text-black rounded text-[10px] font-bold transition-colors shadow-[0_0_10px_rgba(255,0,60,0.3)]">
-                <i class="fa-solid fa-power-off"></i> MASTER KILL SWITCH
+    <!-- BOTTOM BAR (CONTROLS) -->
+    <footer class="h-12 border-t border-term-dim/30 bg-[#020202] flex items-center justify-between px-4 z-10 shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.5)]">
+        <div class="text-term-dim tracking-wider uppercase flex items-center gap-2">
+            <i class="fa-solid fa-satellite-dish animate-pulse"></i> Global Telemetry Bound
+        </div>
+        
+        <div class="flex gap-2 h-8">
+            <button id="btn-force-sync" class="border border-blue-500/50 text-blue-500 hover:bg-blue-500 hover:text-black px-4 rounded font-bold uppercase transition"><i class="fa-solid fa-rotate mr-1"></i> Sync state</button>
+            <button id="btn-pause-sim" class="border border-term-warn/50 text-term-warn hover:bg-term-warn hover:text-black px-4 rounded font-bold uppercase transition"><i class="fa-solid fa-pause mr-1"></i> Pause Sim</button>
+            <button id="btn-resume-sim" class="border border-term-text/50 text-term-text hover:bg-term-text hover:text-black px-4 rounded font-bold uppercase transition"><i class="fa-solid fa-play mr-1"></i> Resume Sim</button>
+            <button id="btn-force-dispatch" class="border border-purple-500/50 text-purple-500 hover:bg-purple-500 hover:text-black px-4 rounded font-bold uppercase transition border-dashed shadow-[0_0_10px_rgba(168,85,247,0.2)]"><i class="fa-solid fa-bolt mr-1"></i> Dispatch</button>
+            <button id="btn-reset-engine" class="border border-term-alert/50 text-term-alert hover:bg-term-alert hover:text-black px-4 rounded font-bold uppercase transition"><i class="fa-solid fa-trash mr-1"></i> Restrict</button>
+            
+            <div class="w-px bg-term-dim/30 mx-1"></div>
+            
+            <button id="btn-kill-switch" class="px-6 bg-red-900/80 border border-red-500 text-red-100 hover:bg-red-600 hover:shadow-[0_0_15px_rgba(255,0,0,0.8)] rounded font-bold transition-all uppercase drop-shadow flex items-center">
+                <i class="fa-solid fa-power-off mr-2"></i> HALT ENGINE
             </button>
         </div>
     </footer>
 
+    <script type="module" src="../js/engine/enginesecurity.js"></script>
     <script type="module" src="../js/engine/engineui.js"></script>
     <script type="module" src="../js/engine/engineincidentlog.js"></script>
     <script type="module" src="../js/engine/enginedispatch.js"></script>
     <script type="module" src="../js/engine/enginesimulator.js"></script>
     <script type="module" src="../js/engine/enginecivilians.js"></script>
+    
     <script type="module">
         import { EngineUI } from '../js/engine/engineui.js';
-        // Initialize the UI manager immediately
-        EngineUI.init();
-        EngineUI.log('INFO', 'Core Engine UI initialized. Awaiting module attachments.');
+        
+        // Wait for Security Clearance!
+        window.addEventListener('engine:security_cleared', () => {
+            if (!window.isSessionValid) return;
+            EngineUI.init();
+        });
     </script>
 </body>
 </html>

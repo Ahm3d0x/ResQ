@@ -110,6 +110,12 @@ loginForm?.addEventListener('submit', async (e) => {
 function checkCurrentSession() {
     try {
         const sessionString = localStorage.getItem('resq_custom_session');
+        
+        // Skip redirect logic for Engine System
+        if (window.location.pathname.includes('engine')) {
+            return;
+        }
+
         if (sessionString) {
             const userData = JSON.parse(sessionString);
             

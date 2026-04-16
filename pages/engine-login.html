@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EnQaZ Core | Secure Initialization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { mono: ['Fira Code', 'monospace'] },
+                    colors: {
+                        term: { bg: '#050505', text: '#00ff41', dim: '#008f11', alert: '#ff003c', warn: '#ffb000' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #050505; color: #00ff41; overflow: hidden; }
+        .crt-effect::before {
+            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen font-mono text-xs sm:text-sm flex flex-col justify-center items-center relative crt-effect">
+    
+    <div class="z-10 w-full max-w-lg bg-black border border-term-dim/30 rounded-lg p-8 shadow-[0_0_30px_rgba(0,143,17,0.2)]">
+        <div class="text-center mb-8">
+            <i class="fa-solid fa-microchip text-4xl mb-4 animate-pulse text-term-dim"></i>
+            <h1 class="text-2xl font-bold uppercase tracking-widest text-term-text pb-2">EnQaZ Core Engine</h1>
+            <p class="text-term-dim text-[10px] uppercase">Secure Access Terminal</p>
+        </div>
+
+        <div id="auth-alert" class="hidden mb-4 p-2 border border-term-alert bg-term-alert/10 text-term-alert text-center font-bold uppercase" style="animation: flashRed 1s ease-out;">
+            ACCESS DENIED
+        </div>
+
+        <form id="engine-login-form" class="space-y-6 text-center">
+            <div>
+                <label class="block text-[10px] font-bold text-term-dim uppercase mb-2">Initialize Override Key</label>
+                <input type="password" id="engine-key-input" required autofocus autocomplete="off"
+                    class="w-full bg-term-bg/50 border border-term-dim/50 rounded p-3 text-center text-term-text focus:outline-none focus:border-term-text focus:shadow-[0_0_10px_rgba(0,255,65,0.2)] transition" 
+                    placeholder="[ ENTRY COMMAND ]">
+            </div>
+
+            <button type="submit" id="btn-submit" class="w-full border-2 border-term-text text-term-text hover:bg-term-text hover:text-black font-bold uppercase py-3 rounded transition-all duration-300">
+                Execute Boot Sequence <i class="fa-solid fa-terminal ml-2"></i>
+            </button>
+        </form>
+    </div>
+
+    <script type="module" src="../js/engine/engineauth.js"></script>
+</body>
+</html>

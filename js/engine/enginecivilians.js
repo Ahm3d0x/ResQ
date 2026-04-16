@@ -262,6 +262,9 @@ export const EngineCivilians = {
     }
 };
 
-setTimeout(() => {
-    EngineCivilians.init().catch(err => console.error("CIV Init Failed:", err));
-}, 1500);
+window.addEventListener('engine:security_cleared', () => {
+    if (!window.isSessionValid) return;
+    setTimeout(() => {
+        EngineCivilians.init().catch(err => console.error("CIV Init Failed:", err));
+    }, 1500);
+});

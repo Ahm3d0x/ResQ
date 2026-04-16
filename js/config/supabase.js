@@ -42,7 +42,8 @@ export const DB_TABLES = {
     NOTIFICATIONS: 'notifications',
     SETTINGS: 'system_settings',
     HOSPITAL_BEDS: 'hospital_beds',
-    HOSPITAL_LOGS: 'hospital_logs'
+    HOSPITAL_LOGS: 'hospital_logs',
+    ENGINE_SESSIONS: 'engine_sessions'
 };
 
 export const ROLES = {
