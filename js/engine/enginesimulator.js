@@ -39,6 +39,7 @@ export const EngineSimulator = {
         await this.restoreActiveMissions();
 
         this.listenForDispatch();
+        this.setupRealtimeListeners(); // ✅🔥 CRITICAL: React to ambulance state changes in DB
         this.setupDatabaseListeners(); // 🌟 الاستماع لإشارات السائق والمستشفى
         
         this.listenForControls();
@@ -79,6 +80,9 @@ export const EngineSimulator = {
             const hospLat = parseFloat(hosp.lat);
             const hospLng = parseFloat(hosp.lng);
 
+            console.log("RESTORE:", inc.id, amb.code, amb.status);
+            EngineUI.log('SIM', `Restoring: Incident #${inc.id} | Unit ${amb.code} | Status: ${amb.status}`, 'warn');
+
             // البيانات الأساسية للمهمة
             const missionData = {
                 incId: inc.id,
@@ -88,7 +92,7 @@ export const EngineSimulator = {
             };
 
             // 🚀 استئناف الحركة بناءً على الحالة الحالية
-            if (amb.status === 'assigned' || amb.status === 'en_route_incident') {
+            if (amb.status === 'assigned' || amb.status === 'en_route_incident' || amb.status === 'arrived') {
                 EngineUI.log('SIM', `Resuming Unit ${amb.code} to INCIDENT #${inc.id}...`, 'warn');
                 this.queueRouteRequest({
                     ...missionData,
@@ -140,9 +144,10 @@ export const EngineSimulator = {
                     return;
                 }
 
-                // 🚑 2. السائق أكد الاستلام: يجب أن يتحرك للحادث! (هنا كان النقص)
+                // 🚑 2. السائق أكد الاستلام: يجب أن يتحرك للحادث!
                 if (newStatus === 'en_route_incident') {
                     EngineUI.log('SIM', `[ACTION] Unit ${payload.new.code} accepted. Routing to Incident...`, 'info');
+                    console.log("✅ en_route_incident received for amb", ambId);
 
                     // جلب بيانات الحادث والمستشفى بشكل موثوق من الداتابيز
                     const { data: incData } = await supabase
@@ -157,6 +162,7 @@ export const EngineSimulator = {
                     if (incData && incData.hospitals) {
                         // إذا لم يكن الإسعاف مسجلاً كنشط، ننشئ له سجلاً للحركة
                         if (!mission) {
+                            console.warn("⚠️ Missing mission. Rebuilding from DB...");
                             mission = { 
                                 lat: parseFloat(payload.new.lat) || 30.0444, 
                                 lng: parseFloat(payload.new.lng) || 31.2357, 
@@ -164,22 +170,32 @@ export const EngineSimulator = {
                             };
                         }
 
-                        // توجيه المحاكي للحادث
+                        // Always force-queue route to incident (mission may have stale/empty route)
+                        console.log("queueRouteRequest called for amb", ambId, "→ incident", incData.id);
                         this.queueRouteRequest({
                             incId: incData.id,
                             amb: { id: ambId, code: payload.new.code },
                             startCoords: { lat: mission.lat, lng: mission.lng },
-                            targetCoords: { lat: incData.latitude, lng: incData.longitude },
-                            hospCoords: { lat: incData.hospitals.lat, lng: incData.hospitals.lng },
+                            targetCoords: { lat: parseFloat(incData.latitude), lng: parseFloat(incData.longitude) },
+                            hospCoords: { lat: parseFloat(incData.hospitals.lat), lng: parseFloat(incData.hospitals.lng) },
                             stage: 'to_incident',
                             speedKph: this.config.AMB_SPEED_EMERGENCY
                         });
+                    } else {
+                        console.error("❌ Could not find incident data for amb", ambId);
                     }
                     return;
                 }
 
                 // --------- المراحل القادمة تتطلب وجود مهمة نشطة مسبقاً ---------
                 if (!mission) return; 
+
+                // 2.5 السائق وصل لموقع الحادث يدوياً أو آلياً
+                if (newStatus === 'arrived') {
+                    EngineUI.log('SIM', `Unit ${payload.new.code} marked as ARRIVED. Waiting pickup...`, 'warn');
+                    mission.stage = 'waiting_driver_action';
+                    mission.route = []; // Ensure complete stop until En Route Hospital
+                }
 
                 // 🚀 3. السائق استلم المصاب: يتحرك للمستشفى
                 if (newStatus === 'en_route_hospital' && mission.stage !== 'to_hospital') {
@@ -222,12 +238,16 @@ export const EngineSimulator = {
                 const newInc = payload.new;
                 const oldInc = payload.old;
 
-                // 1. السائق أكد استلام المريض (assigned -> in_progress)
-                if (oldInc.status === 'assigned' && newInc.status === 'in_progress' && newInc.assigned_ambulance_id) {
-                    const mission = this.activeMissions.get(newInc.assigned_ambulance_id);
-                    if (mission && mission.stage === 'waiting_driver_action') {
-                        EngineUI.log('SIM', `Driver confirmed pickup for #${newInc.id}. Routing to hospital...`, 'success');
-                        // استئناف الرحلة وتوجيهها للمستشفى
+                // 1. تأكيد استلام المريض (in_progress)
+                if (oldInc.status !== 'in_progress' && newInc.status === 'in_progress' && newInc.assigned_ambulance_id) {
+                    const ambId = newInc.assigned_ambulance_id;
+                    const mission = this.activeMissions.get(ambId);
+                    if (mission && (mission.stage === 'waiting_driver_action' || mission.stage === 'to_incident')) {
+                        EngineUI.log('SIM', `Incident #${newInc.id} IN_PROGRESS. Routing to hospital...`, 'success');
+                        
+                        // Prevent race condition, immediately update stage
+                        mission.stage = 'routing_to_hospital_queued';
+                        
                         this.queueRouteRequest({
                             incId: mission.incId,
                             amb: mission.amb,
@@ -240,8 +260,8 @@ export const EngineSimulator = {
                     }
                 }
 
-                // 2. المستشفى أكدت استلام المريض (in_progress -> completed)
-                if (oldInc.status === 'in_progress' && newInc.status === 'completed' && newInc.assigned_ambulance_id) {
+                // 2. المستشفى أكدت استلام المريض (completed)
+                if (oldInc.status !== 'completed' && newInc.status === 'completed' && newInc.assigned_ambulance_id) {
                     const ambId = newInc.assigned_ambulance_id;
                     const mission = this.activeMissions.get(ambId);
                     if (mission && mission.stage === 'waiting_hospital_action') {
@@ -305,6 +325,8 @@ export const EngineSimulator = {
     },
 
     assignPatrol(amb) {
+        if (this.activeMissions.has(amb.id)) return;
+        
         const currentLat = parseFloat(amb.lat) || 30.0444;
         const currentLng = parseFloat(amb.lng) || 31.2357;
         
@@ -347,6 +369,16 @@ export const EngineSimulator = {
         this.isProcessingOsrm = true;
 
         const task = this.osrmQueue.shift();
+
+        if (this.activeMissions.has(task.amb.id)) {
+            const existing = this.activeMissions.get(task.amb.id);
+            if (existing.stage === task.stage) {
+                this.isProcessingOsrm = false;
+                setTimeout(() => this.processOsrmQueue(), 500);
+                return;
+            }
+        }
+
         let routeCoords = null;
 
         try {
@@ -367,10 +399,8 @@ export const EngineSimulator = {
         } catch (err) {}
 
         if (!routeCoords || routeCoords.length < 2) {
-            routeCoords = [
-                [parseFloat(task.startCoords.lat), parseFloat(task.startCoords.lng)],
-                [parseFloat(task.targetCoords.lat), parseFloat(task.targetCoords.lng)]
-            ];
+            this.isProcessingOsrm = false;
+            throw new Error("Cannot generate valid route. Stopping assignment to prevent random movement.");
         }
 
         this.activeMissions.set(task.amb.id, {
@@ -381,6 +411,28 @@ export const EngineSimulator = {
             lng: parseFloat(task.startCoords.lng),
             heading: 0
         });
+
+        // 🌟 Unified Route System: Broadcast exact same polyline to all clients
+        try {
+            trackingChannel.send({ 
+                type: 'broadcast', 
+                event: 'route_established', 
+                payload: { 
+                    ambId: task.amb.id, 
+                    incId: task.incId,
+                    stage: task.stage,
+                    geometry: routeCoords
+                } 
+            }).catch(()=>{});
+
+            // Save GeoJSON geometry optionally if there's an active incident
+            if (task.incId && (task.stage === 'to_incident' || task.stage === 'to_hospital')) {
+                const geoJson = { type: "LineString", coordinates: routeCoords.map(c => [c[1], c[0]]) }; // Leaflet uses [lat,lng], GeoJSON uses [lng,lat]
+                supabase.from(DB_TABLES.INCIDENTS).update({ route_geometry: JSON.stringify(geoJson) }).eq('id', task.incId).catch(()=>{});
+            }
+        } catch (e) {
+            console.error("Failed to broadcast or save route", e);
+        }
 
         this.isProcessingOsrm = false;
         setTimeout(() => this.processOsrmQueue(), 1500);
@@ -413,7 +465,9 @@ export const EngineSimulator = {
                 continue;
             }
 
-            if (!mission.route || mission.currentStep >= mission.route.length - 1) {
+            if (!mission.route || mission.route.length < 2) continue; // Guard for random movement
+
+            if (mission.currentStep >= mission.route.length - 1) {
                 this.handleArrival(ambId, mission);
                 continue;
             }
@@ -479,15 +533,15 @@ export const EngineSimulator = {
             EngineUI.log('SIM', `Ambulance ${mission.amb.code} arrived at incident. Waiting for driver pickup...`, 'warn');
             mission.stage = 'waiting_driver_action';
             
-            // يمكننا تحديث حالة الإسعاف برمجياً ليعلم النظام بوقوفه
-            await supabase.from(DB_TABLES.AMBULANCES).update({ lat: mission.lat, lng: mission.lng }).eq('id', ambId);
+            // Explicitly set the agreed authoritative state (arrived)
+            await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'arrived', lat: mission.lat, lng: mission.lng }).eq('id', ambId);
         } 
         else if (mission.stage === 'to_hospital') {
             // توقف الإسعاف عند المستشفى.. انتظر تأكيد المستشفى
             EngineUI.log('SIM', `Ambulance ${mission.amb.code} arrived at hospital. Waiting for hospital hand-off...`, 'warn');
             mission.stage = 'waiting_hospital_action';
 
-            await supabase.from(DB_TABLES.AMBULANCES).update({ lat: mission.lat, lng: mission.lng }).eq('id', ambId);
+            await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'busy', lat: mission.lat, lng: mission.lng }).eq('id', ambId);
         }
     },
 

@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم المستشفى | EnQaZ</title>
+    <meta name="description" content="لوحة تحكم المستشفى لمتابعة الحالات الطارئة وإدارة الأسرة والسجلات الطبية">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Cairo', 'sans-serif'] },
+                    colors: {
+                        primary: '#dc2626',
+                        hospital: {
+                            bg: '#0a0f1e',
+                            card: '#111827',
+                            border: '#1e293b',
+                            accent: '#10b981',
+                            danger: '#ef4444',
+                            info: '#3b82f6',
+                            warn: '#f59e0b',
+                            purple: '#8b5cf6',
+                        }
+                    },
+                    keyframes: {
+                        pulseGreen: { '0%, 100%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.4)' }, '50%': { boxShadow: '0 0 0 12px rgba(16, 185, 129, 0)' } },
+                        slideUp: { from: { opacity: '0', transform: 'translateY(20px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+                        fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+                        heartbeat: { '0%': { transform: 'scale(1)' }, '14%': { transform: 'scale(1.2)' }, '28%': { transform: 'scale(1)' }, '42%': { transform: 'scale(1.2)' }, '70%': { transform: 'scale(1)' } },
+                    },
+                    animation: {
+                        pulseGreen: 'pulseGreen 2s infinite',
+                        slideUp: 'slideUp 0.5s ease-out forwards',
+                        fadeIn: 'fadeIn 0.3s ease-out',
+                        heartbeat: 'heartbeat 1.5s ease-in-out infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* ========================================================
+           Z-INDEX SCALE (managed, no random values)
+           ========================================================
+           z-base:      1
+           z-header:    40
+           z-tab-nav:   30
+           z-tab-panel: 10
+           z-leaflet:   auto (contained inside panel)
+           z-modal:     100
+           z-toast:     200
+           ======================================================== */
+        
+        body { background: #0a0f1e; overflow: hidden; margin: 0; padding: 0; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        /* ========================================================
+           TAB SYSTEM — The core fix for overlap
+           
+           Problem: display:block + position:absolute showed ALL tabs.
+           Fix: Use visibility/opacity on inactive tabs + pointer-events
+           to ensure only ONE tab is interactive and visible.
+           ======================================================== */
+        .tab-btn { position: relative; transition: all 0.3s; }
+        .tab-btn.active { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: #10b981; }
+        .tab-btn.active::after {
+            content: ''; position: absolute; bottom: -1px;
+            left: 10%; right: 10%; height: 2px;
+            background: #10b981; border-radius: 2px;
+        }
+        
+        /* Inactive tab panel: hidden, non-interactive, removed from flow */
+        .tab-panel {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            background: #0a0f1e;          /* Opaque background prevents bleed-through */
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, visibility 0.25s ease;
+            z-index: 1;
+        }
+
+        /* Active tab panel: visible, interactive, on top */
+        .tab-panel.active {
+            visibility: visible;
+            opacity: 1;
+            pointer-events: auto;
+            z-index: 10;
+        }
+        
+        /* ========================================================
+           COMPONENT STYLES (isolated, no global bleed)
+           ======================================================== */
+        
+        /* Bed grid cards */
+        .bed-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .bed-card:hover { transform: translateY(-4px); }
+        .bed-card.bed-available { border-color: #10b981; }
+        .bed-card.bed-occupied { border-color: #ef4444; }
+        .bed-card.bed-blocked { border-color: #6b7280; opacity: 0.6; }
+        
+        /* Incoming case cards */
+        .case-card { transition: all 0.3s; }
+        .case-card.nearby { animation: pulseGreen 2s infinite; border-color: #f59e0b !important; }
+        
+        /* Map — contained inside its grid cell */
+        #hospital-map { border-radius: 0 0 1rem 1rem; z-index: 1; }
+        .leaflet-control-zoom { display: none !important; }
+        
+        /* ========================================================
+           MODAL SYSTEM — fixed overlay, flex centered, isolated
+           ======================================================== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: none;                /* hidden by default */
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.open {
+            display: flex;                /* flex to center content */
+        }
+        .modal-content {
+            background: #111827;
+            border: 1px solid #1e293b;
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            max-width: 32rem;
+            width: calc(100% - 2rem);
+            padding: 1.5rem;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease-out;
+        }
+        
+        /* ========================================================
+           TOAST SYSTEM
+           ======================================================== */
+        .toast-container { z-index: 200; }
+
+        /* ========================================================
+           RESPONSIVE BREAKPOINTS
+           ======================================================== */
+        @media (max-width: 1024px) {
+            .stats-grid { grid-template-columns: repeat(3, 1fr) !important; }
+            .map-cases-grid { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+        @media (max-width: 480px) {
+            .stats-grid { grid-template-columns: 1fr !important; }
+        }
+    </style>
+</head>
+
+<!-- ========================================================
+     BODY: Full-height flex column.
+     header → nav → main (flex-grow with relative container)
+     ======================================================== -->
+<body class="h-screen w-screen font-sans text-gray-200 flex flex-col">
+
+    <!-- ==================== HEADER (fixed height, z-40) ==================== -->
+    <header id="hospitalHeader" class="h-16 bg-hospital-card/80 backdrop-blur-xl border-b border-hospital-border flex items-center justify-between px-6 shrink-0" style="z-index:40;">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 bg-hospital-accent/20 rounded-xl flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-hospital text-hospital-accent text-lg"></i>
+            </div>
+            <div class="min-w-0">
+                <h1 id="hospitalName" class="text-base font-black text-white truncate">جاري التحميل...</h1>
+                <div class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Hospital Operations Center</div>
+            </div>
+        </div>
+        <div class="flex items-center gap-4 shrink-0">
+            <div id="liveIndicator" class="hidden sm:flex items-center gap-2 bg-hospital-accent/10 px-3 py-1.5 rounded-full border border-hospital-accent/30">
+                <div class="w-2 h-2 rounded-full bg-hospital-accent animate-ping"></div>
+                <span class="text-hospital-accent text-xs font-bold">متصل مباشر</span>
+            </div>
+            <div class="text-xs text-gray-500 hidden sm:block" id="headerClock">--:--:--</div>
+            <button onclick="HospitalApp.logout()" class="text-gray-500 hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-500/10" title="تسجيل الخروج">
+                <i class="fa-solid fa-right-from-bracket"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ==================== TAB NAVIGATION (fixed height, z-30) ==================== -->
+    <nav class="bg-hospital-card/60 backdrop-blur border-b border-hospital-border px-4 sm:px-6 flex items-center gap-1 shrink-0 overflow-x-auto" style="z-index:30;">
+        <button onclick="HospitalApp.switchTab('dashboard')" class="tab-btn active px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold rounded-t-lg border border-transparent border-b-0 whitespace-nowrap" data-tab="dashboard">
+            <i class="fa-solid fa-chart-line ml-1 sm:ml-2"></i> العمليات
+        </button>
+        <button onclick="HospitalApp.switchTab('beds')" class="tab-btn px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold rounded-t-lg border border-transparent border-b-0 text-gray-500 hover:text-gray-300 whitespace-nowrap" data-tab="beds">
+            <i class="fa-solid fa-bed ml-1 sm:ml-2"></i> إدارة الأسرّة
+        </button>
+        <button onclick="HospitalApp.switchTab('logs')" class="tab-btn px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold rounded-t-lg border border-transparent border-b-0 text-gray-500 hover:text-gray-300 whitespace-nowrap" data-tab="logs">
+            <i class="fa-solid fa-clipboard-list ml-1 sm:ml-2"></i> السجلات الطبية
+        </button>
+        <button onclick="HospitalApp.switchTab('settings')" class="tab-btn px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold rounded-t-lg border border-transparent border-b-0 text-gray-500 hover:text-gray-300 whitespace-nowrap" data-tab="settings">
+            <i class="fa-solid fa-gear ml-1 sm:ml-2"></i> الإعدادات
+        </button>
+    </nav>
+
+    <!-- ==================== MAIN CONTENT AREA ==================== 
+         position:relative creates the containing block for absolute tab panels.
+         flex-1 + min-h-0 ensures it fills remaining height without overflow.
+    -->
+    <main class="flex-1 min-h-0 relative overflow-hidden">
+
+        <!-- ===== TAB 1: DASHBOARD (Operations) ===== -->
+        <section id="tab-dashboard" class="tab-panel active">
+            
+            <!-- Stats Row — 5 column responsive grid -->
+            <div class="stats-grid grid grid-cols-5 gap-3 p-4 shrink-0">
+                <div class="bg-hospital-card border border-hospital-border rounded-xl p-3 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0"><i class="fa-solid fa-bed text-blue-400"></i></div>
+                    <div class="min-w-0"><div class="text-[10px] text-gray-500 uppercase font-bold truncate">إجمالي الأسرّة</div><div id="stat-totalBeds" class="text-xl font-black text-white">0</div></div>
+                </div>
+                <div class="bg-hospital-card border border-hospital-border rounded-xl p-3 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-red-500/15 flex items-center justify-center shrink-0"><i class="fa-solid fa-bed-pulse text-red-400"></i></div>
+                    <div class="min-w-0"><div class="text-[10px] text-gray-500 uppercase font-bold truncate">مشغولة</div><div id="stat-occupiedBeds" class="text-xl font-black text-red-400">0</div></div>
+                </div>
+                <div class="bg-hospital-card border border-hospital-border rounded-xl p-3 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-green-500/15 flex items-center justify-center shrink-0"><i class="fa-solid fa-check-circle text-green-400"></i></div>
+                    <div class="min-w-0"><div class="text-[10px] text-gray-500 uppercase font-bold truncate">متاحة</div><div id="stat-availableBeds" class="text-xl font-black text-green-400">0</div></div>
+                </div>
+                <div class="bg-hospital-card border border-hospital-border rounded-xl p-3 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-yellow-500/15 flex items-center justify-center shrink-0"><i class="fa-solid fa-truck-medical text-yellow-400 animate-heartbeat"></i></div>
+                    <div class="min-w-0"><div class="text-[10px] text-gray-500 uppercase font-bold truncate">في الطريق</div><div id="stat-incoming" class="text-xl font-black text-yellow-400">0</div></div>
+                </div>
+                <div class="bg-hospital-card border border-hospital-border rounded-xl p-3 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-purple-500/15 flex items-center justify-center shrink-0"><i class="fa-solid fa-bolt text-purple-400"></i></div>
+                    <div class="min-w-0"><div class="text-[10px] text-gray-500 uppercase font-bold truncate">حالات نشطة</div><div id="stat-activeCases" class="text-xl font-black text-purple-400">0</div></div>
+                </div>
+            </div>
+
+            <!-- Map + Incoming Cases — 12-col grid, fills remaining space -->
+            <div class="map-cases-grid flex-1 min-h-0 grid grid-cols-12 gap-4 px-4 pb-4">
+                
+                <!-- Map Container -->
+                <div class="col-span-12 lg:col-span-7 bg-hospital-card border border-hospital-border rounded-2xl overflow-hidden flex flex-col min-h-0">
+                    <div class="px-4 py-2 border-b border-hospital-border flex items-center justify-between shrink-0">
+                        <span class="text-xs font-bold text-gray-400"><i class="fa-solid fa-map-location-dot ml-1 text-hospital-accent"></i> رادار المستشفى - نطاق 5 كم</span>
+                        <div class="flex items-center gap-2">
+                            <span class="flex items-center gap-1 text-[10px] text-green-400"><span class="w-2 h-2 rounded-full bg-green-400"></span> المستشفى</span>
+                            <span class="flex items-center gap-1 text-[10px] text-yellow-400"><span class="w-2 h-2 rounded-full bg-yellow-400"></span> إسعاف</span>
+                            <span class="flex items-center gap-1 text-[10px] text-red-400"><span class="w-2 h-2 rounded-full bg-red-400"></span> حادث</span>
+                        </div>
+                    </div>
+                    <div id="hospital-map" class="flex-1 min-h-0"></div>
+                </div>
+
+                <!-- Incoming Cases Panel -->
+                <div class="col-span-12 lg:col-span-5 bg-hospital-card border border-hospital-border rounded-2xl flex flex-col overflow-hidden min-h-0">
+                    <div class="px-4 py-2 border-b border-hospital-border flex items-center justify-between shrink-0">
+                        <span class="text-xs font-bold text-gray-400"><i class="fa-solid fa-triangle-exclamation ml-1 text-yellow-400"></i> الحالات الواردة</span>
+                        <span id="incomingCount" class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-bold">0</span>
+                    </div>
+                    <div id="incomingCasesList" class="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+                        <div class="flex flex-col items-center justify-center h-full text-gray-600">
+                            <i class="fa-solid fa-shield-check text-4xl mb-3 text-green-800"></i>
+                            <p class="text-sm font-bold">لا توجد حالات واردة حالياً</p>
+                            <p class="text-xs text-gray-700">النظام يعمل بشكل طبيعي</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== TAB 2: BEDS ===== -->
+        <section id="tab-beds" class="tab-panel">
+            <div class="p-4 border-b border-hospital-border flex items-center justify-between shrink-0 gap-4 flex-wrap">
+                <h2 class="text-lg font-black text-white whitespace-nowrap"><i class="fa-solid fa-bed ml-2 text-hospital-accent"></i> إدارة الأسرّة والغرف</h2>
+                <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+                    <span class="text-xs text-gray-500 hidden sm:inline">فلترة:</span>
+                    <button onclick="HospitalApp.filterBeds('all')" class="bed-filter-btn active text-xs px-3 py-1 rounded-lg bg-gray-800 text-gray-300 border border-gray-700">الكل</button>
+                    <button onclick="HospitalApp.filterBeds('available')" class="bed-filter-btn text-xs px-3 py-1 rounded-lg bg-gray-800/50 text-gray-500 border border-gray-800">متاح</button>
+                    <button onclick="HospitalApp.filterBeds('occupied')" class="bed-filter-btn text-xs px-3 py-1 rounded-lg bg-gray-800/50 text-gray-500 border border-gray-800">مشغول</button>
+                    <button onclick="HospitalApp.filterBeds('blocked')" class="bed-filter-btn text-xs px-3 py-1 rounded-lg bg-gray-800/50 text-gray-500 border border-gray-800">معطّل</button>
+                </div>
+            </div>
+            <div id="bedsGrid" class="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 content-start min-h-0">
+                <!-- Beds rendered dynamically -->
+            </div>
+        </section>
+
+        <!-- ===== TAB 3: LOGS ===== -->
+        <section id="tab-logs" class="tab-panel">
+            <div class="p-4 border-b border-hospital-border flex items-center justify-between gap-4 shrink-0 flex-wrap">
+                <h2 class="text-lg font-black text-white whitespace-nowrap"><i class="fa-solid fa-clipboard-list ml-2 text-hospital-info"></i> السجلات الطبية</h2>
+                <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+                    <input type="text" id="logSearchInput" placeholder="بحث بالاسم أو رقم الحادث..." class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-hospital-accent w-44 sm:w-56">
+                    <select id="logFilterType" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-hospital-accent">
+                        <option value="all">كل الإجراءات</option>
+                        <option value="patient_admitted">استقبال مريض</option>
+                        <option value="patient_discharged">خروج مريض</option>
+                        <option value="patient_deceased">وفاة</option>
+                        <option value="incident_received">استلام حادث</option>
+                    </select>
+                    <input type="date" id="logFilterDate" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-hospital-accent">
+                </div>
+            </div>
+            <div id="logsTableWrapper" class="flex-1 overflow-y-auto p-4 min-h-0">
+                <table class="w-full text-sm">
+                    <thead class="sticky top-0 bg-hospital-bg" style="z-index:1;">
+                        <tr class="text-gray-500 text-xs uppercase border-b border-hospital-border">
+                            <th class="text-right py-3 px-3 font-bold">التاريخ</th>
+                            <th class="text-right py-3 px-3 font-bold">الإجراء</th>
+                            <th class="text-right py-3 px-3 font-bold">التفاصيل</th>
+                            <th class="text-right py-3 px-3 font-bold">رقم الحادث</th>
+                            <th class="text-center py-3 px-3 font-bold">عرض</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsTableBody" class="divide-y divide-hospital-border">
+                        <tr><td colspan="5" class="text-center py-12 text-gray-600"><i class="fa-solid fa-inbox text-3xl mb-2 block"></i>لا توجد سجلات</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ===== TAB 4: SETTINGS ===== -->
+        <section id="tab-settings" class="tab-panel">
+            <div class="flex-1 overflow-y-auto p-4 min-h-0">
+                <div class="max-w-2xl mx-auto w-full space-y-6">
+                    <h2 class="text-lg font-black text-white"><i class="fa-solid fa-gear ml-2 text-gray-400"></i> إعدادات المستشفى</h2>
+                    
+                    <!-- Bed Config -->
+                    <div class="bg-hospital-card border border-hospital-border rounded-2xl p-6 space-y-4">
+                        <h3 class="font-bold text-white flex items-center gap-2"><i class="fa-solid fa-bed text-hospital-accent"></i> إعدادات الأسرّة</h3>
+                        <div class="flex items-center gap-4 flex-wrap">
+                            <label class="text-sm text-gray-400">عدد الأسرّة الكلي:</label>
+                            <div class="flex items-center gap-2">
+                                <button onclick="HospitalApp.adjustBeds(-1)" class="w-10 h-10 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition font-bold text-lg">-</button>
+                                <input type="number" id="settingsTotalBeds" class="w-20 text-center bg-gray-800 border border-gray-700 rounded-lg py-2 text-white font-bold outline-none focus:border-hospital-accent" value="0">
+                                <button onclick="HospitalApp.adjustBeds(1)" class="w-10 h-10 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition font-bold text-lg">+</button>
+                            </div>
+                        </div>
+                        <button onclick="HospitalApp.saveBedConfig()" class="bg-hospital-accent text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-green-600 transition">
+                            <i class="fa-solid fa-floppy-disk ml-1"></i> حفظ التغييرات
+                        </button>
+                        <p id="bedConfigMsg" class="text-xs text-gray-500 hidden"></p>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="bg-hospital-card border border-hospital-border rounded-2xl p-6 space-y-4">
+                        <h3 class="font-bold text-white flex items-center gap-2"><i class="fa-solid fa-lock text-yellow-400"></i> تغيير كلمة المرور</h3>
+                        <form onsubmit="event.preventDefault(); HospitalApp.changePassword();" autocomplete="off">
+                            <input type="password" id="settingsNewPass" placeholder="كلمة المرور الجديدة" autocomplete="new-password" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white outline-none focus:border-hospital-accent mb-4">
+                            <input type="password" id="settingsConfirmPass" placeholder="تأكيد كلمة المرور" autocomplete="new-password" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white outline-none focus:border-hospital-accent mb-4">
+                            <button type="submit" class="bg-yellow-500/80 text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-yellow-600 transition">
+                                <i class="fa-solid fa-key ml-1"></i> تحديث كلمة المرور
+                            </button>
+                        </form>
+                        <p id="passMsg" class="text-xs text-gray-500 hidden"></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ==================== MODALS (z-index: 100, fixed, flex-centered) ==================== -->
+    
+    <!-- Case Details Modal -->
+    <div id="caseModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-black text-white"><i class="fa-solid fa-file-medical ml-2 text-hospital-accent"></i> تفاصيل الحالة</h3>
+                <button onclick="HospitalApp.closeModal('caseModal')" class="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-gray-400 shrink-0"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="caseModalContent"><!-- Dynamic --></div>
+        </div>
+    </div>
+
+    <!-- Bed Details Modal -->
+    <div id="bedModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 28rem;">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-black text-white"><i class="fa-solid fa-bed ml-2 text-blue-400"></i> تفاصيل السرير</h3>
+                <button onclick="HospitalApp.closeModal('bedModal')" class="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-gray-400 shrink-0"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="bedModalContent"><!-- Dynamic --></div>
+        </div>
+    </div>
+
+    <!-- ==================== TOAST CONTAINER (z-index: 200) ==================== -->
+    <div id="toastContainer" class="toast-container fixed top-20 left-1/2 -translate-x-1/2 space-y-2 flex flex-col items-center pointer-events-none">
+        <!-- Toasts injected here dynamically -->
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module" src="../js/hospital/dashboard.js"></script>
+</body>
+</html>

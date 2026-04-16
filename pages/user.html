@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark transition-colors duration-300">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="userDashTitle">لوحة المستخدم | EnQaZ</title>
+    <meta name="description" content="لوحة تحكم المستخدم لمتابعة سجل الحوادث والزوار والإعدادات الشخصية">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Cairo', 'Inter', 'sans-serif'] },
+                    colors: {
+                        primary: '#dc2626',
+                        surface: '#f8fafc',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        usr: {
+                            bg: '#0a0f1e',
+                            card: '#111827',
+                            border: '#1e293b',
+                            accent: '#6366f1',
+                        }
+                    },
+                    keyframes: {
+                        slideUp: { from: { opacity: '0', transform: 'translateY(16px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+                        fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+                    },
+                    animation: {
+                        slideUp: 'slideUp 0.4s ease-out forwards',
+                        fadeIn: 'fadeIn 0.3s ease-out',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { overflow: hidden; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+
+        /* Tab system — visibility based, no overlap */
+        .u-tab-btn { position: relative; transition: all 0.3s; }
+        .u-tab-btn.active { color: #6366f1; background: rgba(99,102,241,0.1); border-color: #6366f1; }
+        .u-tab-btn.active::after { content:''; position:absolute; bottom:-1px; left:10%; right:10%; height:2px; background:#6366f1; border-radius:2px; }
+        
+        .u-tab { position:absolute; inset:0; display:flex; flex-direction:column; visibility:hidden; opacity:0; pointer-events:none; transition: opacity 0.25s, visibility 0.25s; z-index:1; }
+        .u-tab.active { visibility:visible; opacity:1; pointer-events:auto; z-index:10; }
+
+        /* Modal */
+        .u-modal { position:fixed; inset:0; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); z-index:100; display:none; align-items:center; justify-content:center; }
+        .u-modal.open { display:flex; }
+        .u-modal-body { max-width:40rem; width:calc(100% - 2rem); max-height:90vh; overflow-y:auto; animation: slideUp 0.3s ease-out; }
+
+        /* Toast */
+        .u-toast-wrap { z-index:200; }
+
+        /* Timeline */
+        .timeline-dot { width:12px; height:12px; border-radius:50%; border:2px solid; flex-shrink:0; }
+        .timeline-line { width:2px; flex-shrink:0; }
+        
+        /* Light mode overrides */
+        .light-bg { background: #f8fafc; }
+        .dark .light-bg { background: #0a0f1e; }
+        
+        @media (max-width:768px) {
+            .stats-row { grid-template-columns: repeat(2,1fr) !important; }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen font-sans flex flex-col bg-surface dark:bg-usr-bg text-gray-800 dark:text-gray-200 transition-colors duration-300">
+
+    <!-- ===== HEADER ===== -->
+    <header class="h-16 bg-white/80 dark:bg-usr-card/80 backdrop-blur-xl border-b border-gray-200 dark:border-usr-border flex items-center justify-between px-4 sm:px-6 shrink-0" style="z-index:40;">
+        <div class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 bg-usr-accent/20 rounded-xl flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-user-shield text-usr-accent text-lg"></i>
+            </div>
+            <div class="min-w-0">
+                <h1 id="headerUserName" class="text-sm sm:text-base font-black truncate" data-i18n="userGreeting">مرحباً</h1>
+                <div class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Patient Portal</div>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+            <button id="themeToggleBtn" class="w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center hover:scale-105 transition text-sm"><span id="themeIcon">🌙</span></button>
+            <button id="langToggleBtn" class="px-3 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 font-bold text-xs hover:bg-gray-200 dark:hover:bg-gray-700 transition" data-i18n="langBtn">English</button>
+            <button onclick="UserApp.logout()" class="text-gray-400 hover:text-red-500 transition px-2 py-1 rounded-lg hover:bg-red-500/10" title="تسجيل الخروج">
+                <i class="fa-solid fa-right-from-bracket"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ===== TAB NAV ===== -->
+    <nav class="bg-white/60 dark:bg-usr-card/60 backdrop-blur border-b border-gray-200 dark:border-usr-border px-4 sm:px-6 flex items-center gap-1 shrink-0 overflow-x-auto" style="z-index:30;">
+        <button onclick="UserApp.switchTab('incidents')" class="u-tab-btn active px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold rounded-t-lg border border-transparent border-b-0 whitespace-nowrap" data-tab="incidents">
+            <i class="fa-solid fa-car-burst ml-1"></i> <span data-i18n="tabIncidents">سجل الحوادث</span>
+        </button>
+        <button onclick="UserApp.switchTab('visitors')" class="u-tab-btn px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold rounded-t-lg border border-transparent border-b-0 text-gray-500 hover:text-gray-300 whitespace-nowrap" data-tab="visitors">
+            <i class="fa-solid fa-eye ml-1"></i> <span data-i18n="tabVisitors">سجل الزوار</span>
+        </button>
+        <button onclick="UserApp.switchTab('settings')" class="u-tab-btn px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold rounded-t-lg border border-transparent border-b-0 text-gray-500 hover:text-gray-300 whitespace-nowrap" data-tab="settings">
+            <i class="fa-solid fa-user-gear ml-1"></i> <span data-i18n="tabSettings">الإعدادات</span>
+        </button>
+    </nav>
+
+    <!-- ===== MAIN ===== -->
+    <main class="flex-1 min-h-0 relative overflow-hidden">
+
+        <!-- TAB: INCIDENTS -->
+        <section id="tab-incidents" class="u-tab active bg-surface dark:bg-usr-bg">
+            <!-- Filters -->
+            <div class="p-4 border-b border-gray-200 dark:border-usr-border flex items-center justify-between gap-3 shrink-0 flex-wrap">
+                <h2 class="text-base sm:text-lg font-black whitespace-nowrap"><i class="fa-solid fa-timeline ml-2 text-usr-accent"></i> <span data-i18n="incHistoryTitle">سجل الحوادث</span></h2>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <input type="text" id="incSearchInput" placeholder="بحث برقم الحادث..." data-i18n-placeholder="incSearchPh" class="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-usr-accent w-40 sm:w-52 transition-colors">
+                    <select id="incFilterStatus" class="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-usr-accent transition-colors">
+                        <option value="all" data-i18n="filterAll">الكل</option>
+                        <option value="completed">مكتمل</option>
+                        <option value="in_progress">قيد التنفيذ</option>
+                        <option value="assigned">معين</option>
+                    </select>
+                </div>
+            </div>
+            <!-- Incident List -->
+            <div id="incidentsList" class="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+                <div class="flex flex-col items-center justify-center py-20 text-gray-400">
+                    <i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i>
+                    <p class="text-sm font-bold" data-i18n="loading">جاري التحميل...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB: VISITORS -->
+        <section id="tab-visitors" class="u-tab bg-surface dark:bg-usr-bg">
+            <div class="p-4 border-b border-gray-200 dark:border-usr-border flex items-center justify-between gap-3 shrink-0 flex-wrap">
+                <h2 class="text-base sm:text-lg font-black whitespace-nowrap"><i class="fa-solid fa-user-secret ml-2 text-yellow-500"></i> <span data-i18n="visitorLogsTitle">سجل البحث عنك</span></h2>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <input type="text" id="visSearchInput" placeholder="بحث بالإيميل..." data-i18n-placeholder="visSearchPh" class="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-usr-accent w-44 transition-colors">
+                </div>
+            </div>
+            <div id="visitorsTableWrapper" class="flex-1 overflow-y-auto p-4 min-h-0">
+                <table class="w-full text-sm">
+                    <thead class="sticky top-0 bg-surface dark:bg-usr-bg" style="z-index:1;">
+                        <tr class="text-gray-500 text-xs uppercase border-b border-gray-200 dark:border-usr-border">
+                            <th class="text-right py-3 px-3 font-bold" data-i18n="colDate">التاريخ</th>
+                            <th class="text-right py-3 px-3 font-bold" data-i18n="visEmail">البريد الإلكتروني للباحث</th>
+                            <th class="text-right py-3 px-3 font-bold" data-i18n="visMethod">طريقة البحث</th>
+                            <th class="text-right py-3 px-3 font-bold" data-i18n="visQuery">مصطلح البحث</th>
+                        </tr>
+                    </thead>
+                    <tbody id="visitorsTableBody" class="divide-y divide-gray-100 dark:divide-usr-border">
+                        <tr><td colspan="4" class="text-center py-16 text-gray-500"><i class="fa-solid fa-inbox text-3xl mb-2 block"></i><span data-i18n="noVisitors">لا يوجد سجل بحث</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- TAB: SETTINGS -->
+        <section id="tab-settings" class="u-tab bg-surface dark:bg-usr-bg">
+            <div class="flex-1 overflow-y-auto p-4 min-h-0">
+                <div class="max-w-2xl mx-auto w-full space-y-6 pb-8">
+                    <h2 class="text-lg font-black"><i class="fa-solid fa-user-gear ml-2 text-gray-400"></i> <span data-i18n="settingsTitle">الإعدادات الشخصية</span></h2>
+
+                    <!-- Personal Info -->
+                    <div class="bg-white dark:bg-usr-card border border-gray-200 dark:border-usr-border rounded-2xl p-6 space-y-4 transition-colors">
+                        <h3 class="font-bold flex items-center gap-2 text-gray-700 dark:text-white"><i class="fa-solid fa-id-card text-usr-accent"></i> <span data-i18n="personalInfo">المعلومات الشخصية</span></h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="name">الاسم</label>
+                                <input type="text" id="setName" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="email">البريد الإلكتروني</label>
+                                <input type="email" id="setEmail" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors" readonly>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="phone">الهاتف</label>
+                                <input type="tel" id="setPhone" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Medical Info -->
+                    <div class="bg-white dark:bg-usr-card border border-gray-200 dark:border-usr-border rounded-2xl p-6 space-y-4 transition-colors">
+                        <h3 class="font-bold flex items-center gap-2 text-gray-700 dark:text-white"><i class="fa-solid fa-notes-medical text-red-400"></i> <span data-i18n="medicalInfo">المعلومات الطبية</span></h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="bloodType">فصيلة الدم</label>
+                                <select id="setBlood" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors">
+                                    <option value="">—</option>
+                                    <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+                                    <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="allergies">حساسية</label>
+                                <input type="text" id="setAllergies" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="medications">أدوية</label>
+                                <input type="text" id="setMedications" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="chronicConditions">أمراض مزمنة</label>
+                            <textarea id="setConditions" rows="2" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent resize-none transition-colors"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Emergency Contacts -->
+                    <div class="bg-white dark:bg-usr-card border border-gray-200 dark:border-usr-border rounded-2xl p-6 space-y-4 transition-colors">
+                        <h3 class="font-bold flex items-center gap-2 text-gray-700 dark:text-white"><i class="fa-solid fa-phone-volume text-green-500"></i> <span data-i18n="emergencyContacts">جهات الاتصال الطارئة</span></h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div><label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="ec1Name">اسم جهة الاتصال 1</label><input type="text" id="setEc1Name" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors"></div>
+                            <div><label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="ec1Phone">هاتف جهة الاتصال 1</label><input type="tel" id="setEc1Phone" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors"></div>
+                            <div><label class="text-xs text-gray-500 font-bold block mb-1" data-i18n="ec1Relation">العلاقة</label><input type="text" id="setEc1Rel" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent transition-colors"></div>
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="bg-white dark:bg-usr-card border border-gray-200 dark:border-usr-border rounded-2xl p-6 space-y-4 transition-colors">
+                        <h3 class="font-bold flex items-center gap-2 text-gray-700 dark:text-white"><i class="fa-solid fa-lock text-yellow-400"></i> <span data-i18n="changePassword">تغيير كلمة المرور</span></h3>
+                        <form onsubmit="event.preventDefault(); UserApp.changePassword();" autocomplete="off">
+                            <input type="text" name="username" autocomplete="username" class="hidden" aria-hidden="true" tabindex="-1">
+                            <input type="password" id="setNewPass" placeholder="كلمة المرور الجديدة" autocomplete="new-password" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent mb-3 transition-colors">
+                            <input type="password" id="setConfirmPass" placeholder="تأكيد كلمة المرور" autocomplete="new-password" class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-usr-accent mb-3 transition-colors">
+                            <button type="submit" class="bg-yellow-500 text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-yellow-600 transition"><i class="fa-solid fa-key ml-1"></i> <span data-i18n="updatePassword">تحديث</span></button>
+                        </form>
+                        <p id="passMsg" class="text-xs hidden"></p>
+                    </div>
+
+                    <!-- Save All -->
+                    <button onclick="UserApp.saveProfile()" class="w-full bg-usr-accent text-white py-3 rounded-xl font-bold text-sm hover:bg-indigo-600 transition shadow-lg shadow-usr-accent/20">
+                        <i class="fa-solid fa-floppy-disk ml-1"></i> <span data-i18n="saveAll">حفظ جميع التغييرات</span>
+                    </button>
+                    <p id="saveMsg" class="text-xs text-center hidden"></p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ===== INCIDENT DETAIL MODAL ===== -->
+    <div id="incDetailModal" class="u-modal">
+        <div class="u-modal-body bg-white dark:bg-usr-card border border-gray-200 dark:border-usr-border rounded-3xl p-6 shadow-2xl">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-black"><i class="fa-solid fa-file-waveform ml-2 text-usr-accent"></i> <span data-i18n="incReportTitle">تقرير الحادث</span></h3>
+                <button onclick="UserApp.closeModal('incDetailModal')" class="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center transition"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="incDetailContent"><!-- Dynamic --></div>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div id="toastContainer" class="u-toast-wrap fixed top-20 left-1/2 -translate-x-1/2 space-y-2 flex flex-col items-center pointer-events-none"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module" src="../js/core/theme.js"></script>
+    <script type="module" src="../js/core/language.js"></script>
+    <script type="module" src="../js/user/profile.js"></script>
+</body>
+</html>
