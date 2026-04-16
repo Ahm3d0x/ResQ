@@ -272,6 +272,12 @@ window.openUserModal = function() {
     document.getElementById('saveUserBtn').innerText = 'Save User';
     document.getElementById('userPassword').required = true; 
     
+    // Set defaults for Status and Language if they exist
+    const statusEl = document.getElementById('userStatus');
+    if (statusEl) statusEl.value = 'true';
+    const langEl = document.getElementById('userLang');
+    if (langEl) langEl.value = 'en';
+
     const m = document.getElementById('userModal');
     m.classList.remove('hidden');
     setTimeout(() => { m.classList.remove('opacity-0'); m.children[0].classList.remove('scale-95'); }, 10);
@@ -293,6 +299,11 @@ window.editUser = function(id) {
     document.getElementById('userPhone').value = user.phone || '';
     document.getElementById('userRole').value = user.role;
     
+    const statusEl = document.getElementById('userStatus');
+    if (statusEl) statusEl.value = user.is_active ? 'true' : 'false';
+    const langEl = document.getElementById('userLang');
+    if (langEl) langEl.value = user.lang || 'en';
+
     const pwdInput = document.getElementById('userPassword');
     pwdInput.value = ''; pwdInput.required = false; pwdInput.placeholder = "Leave blank to keep current";
 
@@ -310,13 +321,16 @@ userForm.addEventListener('submit', async (e) => {
     const originalText = btn.innerText;
 
     const id = document.getElementById('userId').value;
+    const statusEl = document.getElementById('userStatus');
+    const langEl = document.getElementById('userLang');
+
     const userData = {
         name: document.getElementById('userName').value,
         email: document.getElementById('userEmail').value,
         phone: document.getElementById('userPhone').value,
         role: document.getElementById('userRole').value,
-        is_active: document.getElementById('userStatus').value === 'true',
-        lang: document.getElementById('userLang').value
+        is_active: statusEl ? statusEl.value === 'true' : true,
+        lang: langEl ? langEl.value : 'en'
     };
 
     const password = document.getElementById('userPassword').value;

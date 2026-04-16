@@ -223,8 +223,8 @@ window.editDevice = function(id) {
 
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn = document.getElementById('saveDeviceBtn');
-    const original = btn.innerHTML;
+    const btn = document.getElementById('saveDevBtn');
+    const original = btn ? btn.innerHTML : 'Save';
     const id = document.getElementById('devId').value;
 
     const data = {
@@ -232,14 +232,16 @@ form.addEventListener('submit', async (e) => {
         user_id: document.getElementById('devUserId').value || null,
         car_plate: document.getElementById('devCarPlate').value,
         car_model: document.getElementById('devCarModel').value,
-        status: document.getElementById('devStatus').value,
+        status: document.getElementById('devStatus') ? document.getElementById('devStatus').value : 'active',
         lat: parseFloat(document.getElementById('devLat').value),
         lng: parseFloat(document.getElementById('devLng').value)
     };
 
     try {
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري الحفظ...';
-        btn.disabled = true;
+        if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري الحفظ...';
+            btn.disabled = true;
+        }
 
         // 🛡️ 1. منع تكرار رقم اللوحة (Car Plate) لجهاز آخر
         if (data.car_plate) {
@@ -287,8 +289,10 @@ form.addEventListener('submit', async (e) => {
     } catch (error) { 
         window.showToast((t('error')||"فشل") + ": " + error.message, "error"); 
     } finally { 
-        btn.innerHTML = original; 
-        btn.disabled = false; 
+        if (btn) {
+            btn.innerHTML = original; 
+            btn.disabled = false; 
+        }
     }
 });
 
