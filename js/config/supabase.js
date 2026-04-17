@@ -54,13 +54,29 @@ export const ROLES = {
 };
 
 export const INCIDENT_STATUS = {
-    PENDING: 'pending',
-    CONFIRMED: 'confirmed',
-    CANCELED: 'canceled',
-    ASSIGNED: 'assigned',
+    PENDING:     'pending',
+    CONFIRMED:   'confirmed',
+    CANCELLED:   'cancelled',   // AUTHORITATIVE spelling — double-L only. 'canceled' (1L) is deprecated.
+    ASSIGNED:    'assigned',
     IN_PROGRESS: 'in_progress',
-    COMPLETED: 'completed'
+    COMPLETED:   'completed'
+    // NOTE: 'failed' is NOT a valid incident_status_enum value in the DB. Do NOT use it.
 };
+
+// Helper: check if an incident status string represents a terminal/cancelled state.
+// Use this instead of manual string comparisons throughout the codebase.
+export function isIncidentCancelled(status) {
+    // 'cancelled' (2L) is the authoritative spelling.
+    // 'canceled' (1L) guards against any legacy rows that may exist before the DB migration.
+    // 'CANCELLED' uppercase is NOT a valid enum value and must NEVER be passed to DB queries.
+    return status === 'cancelled' || status === 'canceled';
+}
+
+export function isIncidentTerminal(status) {
+    // Only 'cancelled'/'canceled' and 'completed' are valid terminal states in the DB enum.
+    // 'failed' does NOT exist in incident_status_enum.
+    return status === 'cancelled' || status === 'canceled' || status === 'completed';
+}
 
 // ============================================================================
 // 4. دوال مساعدة عامة (Global Helper Functions)
@@ -100,18 +116,38 @@ export function subscribeToTable(tableName, callback) {
 }
 
 /**
- * 🔒 المركز الآمن لتسجيل حركات الحوادث (Idempotent Logger)
- * يضمن عدم تكرار أي سجل بفضل دمج قاعدة بيانات Unique Index
+ * 🔒 Idempotent Incident Action Logger
+ *
+ * ARCHITECTURE NOTE: This function is a FAST-FAIL in-app guard only.
+ * The authoritative idempotency enforcement is the PostgreSQL UNIQUE INDEX
+ * on incident_logs(incident_id, action) — defined in cancellation_hardening.sql.
+ * The SELECT check here avoids a round-trip INSERT when we already know it'll
+ * fail, but it is NOT race-condition-proof on its own (TOCTOU).
+ * The DB constraint is the true lock.
+ *
+ * @param {number} incidentId - The incident primary key (NOT NULL — skip for pre-incident events)
+ * @param {string} action     - The event action name (must be unique per incident)
+ * @param {string} performedBy
+ * @param {string} note
+ * @returns {boolean} true if written, false if duplicate or error
  */
-export async function logIncidentAction(incidentId, action, performedBy = 'system', note = '', metadata = {}) {
-    if (!incidentId || !action) return false;
+export async function logIncidentAction(incidentId, action, performedBy = 'system', note = '') {
+    if (!incidentId || !action) {
+        console.warn(`[LogIncidentAction] Skipped: missing incidentId or action. action=${action}`);
+        return false;
+    }
 
-    // Optional fast-check if high traffic
-    const { data: existing } = await supabase.from(DB_TABLES.INCIDENT_LOGS)
-        .select('id').eq('incident_id', incidentId).eq('action', action).limit(1);
+    // In-app fast-fail: skip INSERT if we already know this log exists.
+    // NOTE: This check can still race — the DB unique constraint is the final enforcer.
+    const { data: existing } = await supabase
+        .from(DB_TABLES.INCIDENT_LOGS)
+        .select('id')
+        .eq('incident_id', incidentId)
+        .eq('action', action)
+        .limit(1);
 
     if (existing && existing.length > 0) {
-        console.log(`[Idempotency] Blocked duplicate event: ${action} for INC#${incidentId}`);
+        console.log(`[DEBUG:CANCEL_FLOW] [Idempotency] Skipping duplicate log: ${action} for INC#${incidentId}`);
         return false;
     }
 
@@ -119,19 +155,17 @@ export async function logIncidentAction(incidentId, action, performedBy = 'syste
         incident_id: incidentId,
         action,
         performed_by: performedBy,
-        note,
-        metadata
+        note
     }]);
 
-    // 23505 is Unique Violation in PostgreSQL (Constraint Trap)
     if (error) {
+        // 23505 = PostgreSQL unique_violation — DB constraint caught the duplicate.
         if (error.code === '23505') {
-            console.log(`[Idempotency] Native DB Constraint Blocked duplicate: ${action} for INC#${incidentId}`);
-            return false;
-        } else {
-            console.error(`[LogError] Failed to write event ${action}`, error.message);
+            console.log(`[DEBUG:CANCEL_FLOW] [DB Constraint] Duplicate blocked by UNIQUE INDEX: ${action} for INC#${incidentId}`);
             return false;
         }
+        console.error(`[LogError] Failed to write event '${action}' for INC#${incidentId}:`, error.message);
+        return false;
     }
     return true;
 }

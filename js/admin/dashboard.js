@@ -2,7 +2,7 @@
 // 🎛️ EnQaZ Dashboard Controller (Luxury View & Telemetry Receiver) - V4.0
 // ============================================================================
 
-import { supabase, DB_TABLES, logIncidentAction } from '../config/supabase.js';
+import { supabase, DB_TABLES, logIncidentAction, isIncidentCancelled } from '../config/supabase.js';
 import { MapEngine, SIM_CONFIG } from './mapEngine.js';
     const SMOOTHING_FACTOR = 0.001; // نعومة فائقة للحركة
 
@@ -231,6 +231,21 @@ function setupDatabaseRealtime() {
         .on('postgres_changes', { event: '*', schema: 'public', table: DB_TABLES.INCIDENTS }, payload => {
             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                 const newInc = payload.new;
+
+                if (isIncidentCancelled(newInc.status) || newInc.status === 'completed') {
+                    // Stop any active route visualization
+                    MapEngine.toggleIncidentRoute(newInc.id, null, null, null, null, null, null, null, false);
+                    
+                    // HARDENED UI: If cancelled, remove from local data immediately to prevent ghosting.
+                    // Using isIncidentCancelled() guards against both 'cancelled' and 'CANCELLED' spellings
+                    // during any DB migration period.
+                    if (isIncidentCancelled(newInc.status)) {
+                        delete window.rawData.incidents[newInc.id];
+                        window.updateAllUI();
+                        return; // Halt logic for this payload
+                    }
+                }
+
                 if (window.rawData.incidents[newInc.id]) {
                     window.rawData.incidents[newInc.id] = { ...window.rawData.incidents[newInc.id], ...newInc };
                 } else {
@@ -375,7 +390,7 @@ window.renderIncidents = function() {
     if(!list) return;
     
     const activeIncidents = Object.values(window.rawData.incidents)
-        .filter(inc => inc.status !== 'completed' && inc.status !== 'canceled')
+        .filter(inc => inc.status !== 'completed' && !isIncidentCancelled(inc.status))
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const pendingBadge = document.getElementById('pendingCountBadge');
@@ -651,23 +666,47 @@ window.cancelIncident = function(incId) {
 
 async function executeCancel(incId) {
     const inc = window.rawData.incidents[incId];
-    if (inc) {
-        inc.status = 'canceled';
-        if (inc.assigned_ambulance_id) {
-            const ambId = inc.assigned_ambulance_id;
-            window.rawData.ambulances[ambId].status = 'returning';
-            supabase.from(DB_TABLES.AMBULANCES).update({ status: 'returning' }).eq('id', ambId).then();
-        }
-        inc.assigned_hospital_id = null;
-        inc.assigned_ambulance_id = null;
-        MapEngine.toggleIncidentRoute(incId, null, null, null, null, null, null, null, false);
+    if (!inc) {
+        console.warn(`[DEBUG:CANCEL_FLOW] executeCancel: Incident #${incId} not found in local state.`);
+        return;
     }
 
-    await supabase.from(DB_TABLES.INCIDENTS).update({ 
-        status: 'canceled', assigned_hospital_id: null, assigned_ambulance_id: null 
-    }).eq('id', incId);
-    
-    await logSystemAction('UPDATE', 'incidents', incId, 'Admin canceled the incident manually.');
+    // HARDENED: Guard against double-execution.
+    // If the incident is already cancelled locally (e.g., admin clicked Cancel twice,
+    // or the realtime update already set it), bail out immediately without inserting
+    // a duplicate hardware_request row.
+    if (isIncidentCancelled(inc.status)) {
+        console.log(`[DEBUG:CANCEL_FLOW] executeCancel: INC#${incId} already cancelled locally. Skipping duplicate insert.`);
+        return;
+    }
+
+    // HARDENED: Mark locally as cancelled BEFORE the async insert to prevent
+    // a second synchronous call (e.g., another button click) from passing the guard above.
+    inc.status = 'cancelled';
+    console.log('[DEBUG:CANCEL_FLOW]', { incident_id: incId, stage: 'admin_cancel_initiated', admin_id: currentAdminId });
+
+    // Send unified cancel signal via hardware_requests table.
+    // The Engine listens to this table and routes the cancel through the atomic RPC.
+    const { error } = await supabase.from(DB_TABLES.HARDWARE_REQUESTS).insert([{
+        device_id: inc.device_id,
+        request_type: 'cancel',
+        raw_payload: JSON.stringify({ 
+            source: 'admin', 
+            reason: 'cancelled_by_admin',
+            admin_id: currentAdminId 
+        })
+    }]);
+
+    if (error) {
+        console.error('[DEBUG:CANCEL_FLOW] Failed to insert cancel hardware_request:', error);
+        // Revert local state so the admin can try again
+        inc.status = 'assigned'; // restore to previous active state
+        return;
+    }
+
+    // Cleanup UI immediately for UX fluidity (realtime handles the rest)
+    MapEngine.toggleIncidentRoute(incId, null, null, null, null, null, null, null, false);
+    delete window.rawData.incidents[incId]; // Remove immediately, realtime will confirm
     
     window.updateAllUI(); 
     document.getElementById('detailsPanel').classList.add(document.documentElement.dir === 'rtl' ? '-translate-x-[120%]' : 'translate-x-[120%]');

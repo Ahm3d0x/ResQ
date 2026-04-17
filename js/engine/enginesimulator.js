@@ -2,7 +2,7 @@
 // 🏎️ EnQaZ Core Engine - High-Performance Simulator (V4.0)
 // ============================================================================
 
-import { supabase, DB_TABLES, logIncidentAction } from '../config/supabase.js';
+import { supabase, DB_TABLES, logIncidentAction, isIncidentCancelled } from '../config/supabase.js';
 import { EngineUI } from './engineui.js';
 
 export const trackingChannel = supabase.channel('live-tracking', {
@@ -205,6 +205,31 @@ export const EngineSimulator = {
                 const newInc = payload.new;
                 const oldInc = payload.old;
 
+                // ─── CANCELLED: Abort mission immediately, release ambulance ───────────────
+                // This was previously missing — the simulator had no handler for cancellation,
+                // leaving stale entries in activeMissions and the ambulance permanently locked.
+                if (!isIncidentCancelled(oldInc.status) && isIncidentCancelled(newInc.status)) {
+                    const ambId = newInc.assigned_ambulance_id || oldInc.assigned_ambulance_id;
+                    if (ambId) {
+                        const mission = this.activeMissions.get(ambId);
+                        if (mission) {
+                            EngineUI.log('SIM', `[CANCEL_FLOW] Incident #${newInc.id} cancelled. Stopping Unit ${mission.amb?.code || ambId}.`, 'warn');
+                            console.log('[DEBUG:CANCEL_FLOW]', { 
+                                incident_id: newInc.id, 
+                                stage: 'simulator_mission_aborted', 
+                                ambulance_id: ambId 
+                            });
+                            // Remove from active missions — stops physics loop immediately
+                            this.activeMissions.delete(ambId);
+                            // Assign to patrol (ambulance status was already set to 'available'
+                            // by the RPC, so this just restarts the patrol simulation)
+                            this.assignPatrol({ id: ambId, code: mission.amb?.code || '', lat: mission.lat, lng: mission.lng });
+                        }
+                    }
+                    return; // Do not fall through to other handlers
+                }
+
+                // ─── IN_PROGRESS: Driver picked up patient → move to hospital ─────────────
                 // Driver App triggered IN_PROGRESS -> Update ambulance to EN_ROUTE_HOSPITAL automatically
                 if (oldInc.status !== 'in_progress' && newInc.status === 'in_progress' && newInc.assigned_ambulance_id) {
                     const ambId = newInc.assigned_ambulance_id;
@@ -215,6 +240,7 @@ export const EngineSimulator = {
                     }
                 }
 
+                // ─── COMPLETED: Hospital confirmed patient handover ────────────────────────
                 // Hospital triggered COMPLETED
                 if (oldInc.status !== 'completed' && newInc.status === 'completed' && newInc.assigned_ambulance_id) {
                     const ambId = newInc.assigned_ambulance_id;

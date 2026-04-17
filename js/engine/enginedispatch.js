@@ -2,7 +2,7 @@
 // 🧠 EnQaZ Core Engine - Elite AI Dispatcher & Rerouting System (V5.0)
 // ============================================================================
 
-import { supabase, DB_TABLES, logIncidentAction } from '../config/supabase.js';
+import { supabase, DB_TABLES, logIncidentAction, isIncidentCancelled } from '../config/supabase.js';
 import { EngineUI } from './engineui.js';
 
 export const EngineDispatch = {
@@ -24,6 +24,18 @@ export const EngineDispatch = {
 
     async initializeDispatch(incident) {
         if (this.dispatchState.has(incident.id)) return; // Prevent duplicate init
+
+        // HARDENED: Re-check DB status before doing anything.
+        // This catches the case where a cancel arrived while a retry timer was pending.
+        const { data: incCheck } = await supabase
+            .from(DB_TABLES.INCIDENTS)
+            .select('status')
+            .eq('id', incident.id)
+            .single();
+        if (incCheck && isIncidentCancelled(incCheck.status)) {
+            console.log(`[DEBUG:DISPATCH_ABORT] initializeDispatch: INC#${incident.id} is already cancelled. Aborting.`);
+            return;
+        }
 
         try {
             const incLat = parseFloat(incident.latitude || incident.lat);
@@ -78,12 +90,22 @@ export const EngineDispatch = {
         const state = this.dispatchState.get(incidentId);
         if (!state) return;
 
+        // BEFORE ANY ACTION: FETCH incident.status
+        const { data: incCheck } = await supabase.from(DB_TABLES.INCIDENTS).select('status').eq('id', incidentId).single();
+        if (incCheck && isIncidentCancelled(incCheck.status)) {
+            EngineUI.log('DISPATCH', `Incident #${incidentId} was cancelled. Stopping dispatch explicitly.`, 'warn');
+            console.log(`[DEBUG:DISPATCH_ABORT] executeDispatchAttempt: INC#${incidentId} cancelled before attempt. Halting.`);
+            this.dispatchState.delete(incidentId);
+            return;
+        }
+
         const { incident, candidates, currentIdx, retries } = state;
         const maxRetries = 5;
 
         if (retries >= maxRetries) {
-            EngineUI.log('DISPATCH', `CRITICAL: Incident #${incident.id} FAILED to find resources after ${maxRetries} attempts. Terminating logic.`, 'alert');
-            await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'failed' }).eq('id', incident.id);
+            EngineUI.log('DISPATCH', `CRITICAL: Incident #${incident.id} FAILED to find resources after ${maxRetries} attempts. Terminating.`, 'alert');
+            // 'failed' is NOT a valid incident_status_enum value — use 'completed' as the terminal fallback.
+            await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'completed' }).eq('id', incident.id);
             this.dispatchState.delete(incidentId);
             return;
         }
@@ -112,9 +134,37 @@ export const EngineDispatch = {
         }
     },
 
+    stopDispatch(incidentId) {
+        const state = this.dispatchState.get(incidentId);
+        if (state) {
+            if (state.timer) {
+                clearTimeout(state.timer);
+                EngineUI.log('DISPATCH', `Timers for Incident #${incidentId} cleared.`, 'dim');
+            }
+            this.dispatchState.delete(incidentId);
+        }
+    },
+
     async lockResources(incidentId, ambulance, hospital) {
         if (!incidentId || isNaN(incidentId)) return;
-        
+
+        // HARDENED: Re-check status atomically before writing.
+        // Prevents the race: cancel arrives BETWEEN the status check in executeDispatchAttempt
+        // and the actual DB writes here. Without this, a cancelled incident can still get
+        // an ambulance locked to it permanently.
+        const { data: freshCheck } = await supabase
+            .from(DB_TABLES.INCIDENTS)
+            .select('status')
+            .eq('id', incidentId)
+            .single();
+
+        if (freshCheck && isIncidentCancelled(freshCheck.status)) {
+            EngineUI.log('DISPATCH', `[DISPATCH_ABORT] INC#${incidentId} cancelled just before lockResources. Aborting lock.`, 'warn');
+            console.log(`[DEBUG:DISPATCH_ABORT] lockResources aborted: INC#${incidentId} status = ${freshCheck.status}`);
+            this.dispatchState.delete(incidentId);
+            return;
+        }
+
         const timestamp = new Date().toISOString();
 
         // Atomic DB Update
@@ -136,9 +186,21 @@ export const EngineDispatch = {
     launchDriverWatchdog(incidentId, ambulanceId) {
         if (!incidentId || isNaN(incidentId) || !ambulanceId || isNaN(ambulanceId)) return;
         
-        setTimeout(async () => {
-            const state = this.dispatchState.get(incidentId);
-            if (!state) return; // Mission likely completed/cancelled
+        const state = this.dispatchState.get(incidentId);
+        if (!state) return;
+
+        // Store timeout ID to prevent ghost executions
+        const timeoutId = setTimeout(async () => {
+            const currentState = this.dispatchState.get(incidentId);
+            if (!currentState) return; // Mission likely stopped/cancelled
+
+        // BEFORE ANY ACTION: FETCH incident.status
+        const { data: incCheck } = await supabase.from(DB_TABLES.INCIDENTS).select('status').eq('id', incidentId).single();
+        if (incCheck && isIncidentCancelled(incCheck.status)) {
+             this.dispatchState.delete(incidentId);
+             console.log(`[DEBUG:DISPATCH_ABORT] watchdog: INC#${incidentId} is cancelled. Clearing mission.`);
+             return;
+        }
 
             const { data: ambReq, error } = await supabase
                 .from(DB_TABLES.AMBULANCES)
@@ -165,9 +227,11 @@ export const EngineDispatch = {
             } else if (ambReq.status === 'en_route_incident') {
                 EngineUI.log('DISPATCH', `Mission Accepted by driver. Simulator tracking taking over.`, 'success');
                 EngineUI.pushTimeline(`Driver Accepted`, `Unit taking over Mission #${incidentId}`, 'success');
-                this.dispatchState.delete(incidentId); // Success, remove tracking state
+                this.stopDispatch(incidentId); // Success, remove tracking and clear timers
             }
         }, 15000); // 15 seconds window
+
+        state.timer = timeoutId;
     },
 
     async failoverAttempt(incidentId) {
@@ -192,25 +256,42 @@ export const EngineDispatch = {
 
         EngineUI.log('DISPATCH', `Failover triggered. Attempting next candidate in ${delayMs/1000}s... (Retry ${state.retries}/${maxR})`, 'warn');
         
-        setTimeout(() => {
+        const timerId = setTimeout(() => {
             this.executeDispatchAttempt(incidentId);
         }, delayMs);
+
+        state.timer = timerId;
     },
 
     handleNoResources(incident, attempts) {
-        const delayMs = 5000 * Math.pow(2, attempts - 1); // Exponential retry even when zero resources initially found
         const maxRetries = 5;
+        const delayMs = 5000 * Math.pow(2, attempts - 1);
 
         if (attempts >= maxRetries) {
             EngineUI.log('DISPATCH', `CRITICAL: No units available. FAILED to dispatch.`, 'alert');
-            supabase.from(DB_TABLES.INCIDENTS).update({ status: 'failed' }).eq('id', incident.id).catch(()=>{});
+            // 'failed' is NOT a valid incident_status_enum value — use 'completed' as the terminal fallback.
+            supabase.from(DB_TABLES.INCIDENTS).update({ status: 'completed' }).eq('id', incident.id).catch(()=>{});
             return;
         }
 
         EngineUI.log('DISPATCH', `No resources found. Retrying in ${delayMs/1000}s... (Attempt ${attempts}/${maxRetries})`, 'alert');
-        setTimeout(() => {
+
+        // HARDENED: Store the timer in dispatchState so stopDispatch() can kill it.
+        // Previously this timer was anonymous and could fire AFTER a cancel arrived,
+        // causing initializeDispatch() to run on a cancelled incident.
+        if (!this.dispatchState.has(incident.id)) {
+            this.dispatchState.set(incident.id, { incident, candidates: [], currentIdx: 0, retries: attempts, timer: null });
+        }
+        const state = this.dispatchState.get(incident.id);
+        const timerId = setTimeout(() => {
+            // The state entry may have been deleted by stopDispatch() during the wait
+            if (!this.dispatchState.has(incident.id)) {
+                console.log(`[DEBUG:DISPATCH_ABORT] handleNoResources retry cancelled: INC#${incident.id} was stopped during backoff.`);
+                return;
+            }
             this.initializeDispatch(incident);
         }, delayMs);
+        state.timer = timerId;
     },
 
     // Haversine only

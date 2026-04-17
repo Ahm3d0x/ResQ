@@ -177,7 +177,10 @@
                     .from(DB_TABLES.INCIDENTS)
                     .select('*')
                     .eq('device_id', deviceId)
-                    .not('status', 'in', '("completed","canceled")')
+                    // Use .neq() chain — PostgREST casts .not('in',...) values against the enum
+                    // and ANY uppercase or invalid spelling throws a 400. Only valid enum values allowed.
+                    .neq('status', 'completed')
+                    .neq('status', 'cancelled')
                     .order('created_at', { ascending: false })
                     .limit(1);
                 
@@ -254,28 +257,24 @@
             cancelBtn.disabled = true;
 
             try {
-// 1. Log Cancel Hardware Request
-// 1. Log Cancel Hardware Request
+                // 1. Send hardware cancel request strictly to unified ingestion
                 await supabase.from(DB_TABLES.HARDWARE_REQUESTS).insert([{
                     device_id: currentActiveIncident.device_id,
                     request_type: 'cancel',
-                    raw_payload: JSON.stringify({ reason: "User triggered cancel from device" }) // 🔴 تحويلها إلى raw_payload كنص
+                    raw_payload: JSON.stringify({ 
+                        source: "simulator",
+                        reason: "User triggered cancel from simulator device"
+                    })
                 }]);
-                // 2. Update Incident Status
-                const { error } = await supabase.from(DB_TABLES.INCIDENTS)
-                    .update({ status: 'canceled' })
-                    .eq('id', currentActiveIncident.id);
 
-                if (error) throw error;
-
+                // We NO LONGER update INCIDENTS directly.
+                // HARDENED UI: Clear local state immediately for instant feedback
                 currentActiveIncident = null;
                 updateUIState();
-
             } catch (err) {
                 console.error("Cancel Error:", err);
                 alert("Failed to cancel.");
-            } finally {
-                cancelBtn.innerHTML = "<i class='fa-solid fa-xmark'></i> Cancel Hardware Request";
+                cancelBtn.innerHTML = "<i class='fa-solid fa-xmark text-red-400'></i> Cancel Hardware Request";
                 cancelBtn.disabled = false;
             }
         });
@@ -298,7 +297,12 @@
             })
             .subscribe();
         function updateUIState() {
-            if (currentActiveIncident && currentActiveIncident.status !== 'canceled' && currentActiveIncident.status !== 'completed') {
+            // Use lowercase 'cancelled' only — 'CANCELLED' is not a valid incident_status_enum value
+            const isTerminal = !currentActiveIncident 
+                || currentActiveIncident.status === 'cancelled'
+                || currentActiveIncident.status === 'completed';
+
+            if (!isTerminal) {
                 idleControlArea.classList.add('hidden');
                 activeControlArea.classList.remove('hidden');
                 activeControlArea.classList.add('flex');

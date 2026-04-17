@@ -186,7 +186,7 @@ export const MapEngine = {
     updateMarkers(type, dataList) {
         let filteredData = dataList;
         if (type === 'incidents') {
-            filteredData = dataList.filter(inc => inc.status !== 'completed' && inc.status !== 'canceled');
+            filteredData = dataList.filter(inc => inc.status !== 'completed' && inc.status !== 'CANCELLED' && inc.status !== 'cancelled');
         }
 
         const currentIds = new Set(filteredData.map(item => String(item.id)));

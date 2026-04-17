@@ -76,7 +76,7 @@ function renderIncidentsTable(data) {
         const timeStr = new Date(inc.created_at).toLocaleString();
         let sColor = inc.status === 'pending' ? 'bg-warning/20 text-warning' : 
                      inc.status === 'completed' ? 'bg-success/20 text-success' : 
-                     inc.status === 'canceled' ? 'bg-gray-500/20 text-gray-500' : 'bg-primary/20 text-primary';
+                     (inc.status === 'CANCELLED' || inc.status === 'cancelled') ? 'bg-gray-500/20 text-gray-500' : 'bg-primary/20 text-primary';
 
         return `
         <tr class="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-white/5">
