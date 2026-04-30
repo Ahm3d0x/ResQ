@@ -135,12 +135,29 @@
                 <h2 class="text-3xl font-extrabold mb-2" data-i18n="searchTitle">Track Patient Status</h2>
                 <p class="text-gray-500 mb-8 max-w-md mx-auto" data-i18n="searchDesc">Enter the unique Device UID to check the real-time status and destination hospital of the patient.</p>
                 <form id="visitorSearchForm" class="space-y-4 text-left">
-                    <div>
-                        <label class="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-300" data-i18n="deviceUid">Device UID</label>
-                        <input type="text" id="searchInput" required class="w-full px-5 py-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-2 focus:ring-primary focus:border-primary transition font-mono text-gray-900 dark:text-white" placeholder="RQ-98273-XYZ">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-gray-700 dark:text-gray-300">Your Name (الاسم)</label>
+                            <input type="text" id="visitorName" required class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-2 focus:ring-primary focus:border-primary transition text-gray-900 dark:text-white" placeholder="John Doe">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-gray-700 dark:text-gray-300">Your Email (بريدك الإلكتروني)</label>
+                            <input type="email" id="visitorEmail" required class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-2 focus:ring-primary focus:border-primary transition text-gray-900 dark:text-white" placeholder="john@example.com">
+                        </div>
                     </div>
-                    <button type="submit" class="w-full bg-secondary dark:bg-white text-white dark:text-secondary font-bold text-lg py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition shadow-lg" data-i18n="btnSearch">Search Database</button>
+                    <div>
+                        <label class="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-300">Search Query (رقم الجهاز أو بريد المصاب)</label>
+                        <input type="text" id="searchInput" required class="w-full px-5 py-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 outline-none focus:ring-2 focus:ring-primary focus:border-primary transition font-mono text-gray-900 dark:text-white" placeholder="Device UID or User Email">
+                    </div>
+                    <button type="submit" id="btnSearchSubmit" class="w-full bg-secondary dark:bg-white text-white dark:text-secondary font-bold text-lg py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition shadow-lg flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-search"></i> <span data-i18n="btnSearch">Search Database</span>
+                    </button>
                 </form>
+                
+                <!-- Search Results Container -->
+                <div id="searchResults" class="mt-8 hidden text-left bg-gray-50 dark:bg-gray-800/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700">
+                    <!-- Results will be injected here -->
+                </div>
             </div>
         </section>
 

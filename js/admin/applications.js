@@ -260,6 +260,15 @@ async function sendAppEmail(appData, type, extraData = {}) {
     } else if (type === 'rejected') {
         templateID = "template_79afdrq"; 
         templateParams.reason = extraData.reason;
+        templateParams.message = `
+            <div dir="rtl" style="font-family: Arial, sans-serif; text-align: center; background: #0f172a; padding: 40px; color: white; border-radius: 10px;">
+                <h1 style="color: #ef4444;">تم رفض طلبك</h1>
+                <p style="font-size: 16px; color: #cbd5e1;">مرحباً ${appData.full_name}، نأسف لإبلاغك بأنه تم رفض طلب انضمامك لشبكة إنقاذ للأسباب التالية:</p>
+                <div style="background: rgba(239, 68, 68, 0.1); padding: 20px; border: 1px solid #ef4444; border-radius: 10px; margin: 20px auto; max-width: 500px; color: #fca5a5; font-weight: bold;">
+                    ${extraData.reason}
+                </div>
+            </div>
+        `;
     }
 
     try {
@@ -307,6 +316,7 @@ window.approveApplication = async function(id) {
                 const { error: dErr } = await supabase.from(DB_TABLES.DEVICES).insert({
                     device_uid: devUid,
                     user_id: newUser.id,
+                    application_id: app.id,
                     car_plate: app.car_plate,
                     car_model: `${app.car_brand} ${app.car_model}`
                 });

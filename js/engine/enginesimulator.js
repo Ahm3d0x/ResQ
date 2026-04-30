@@ -4,6 +4,7 @@
 
 import { supabase, DB_TABLES, logIncidentAction, isIncidentCancelled } from '../config/supabase.js';
 import { EngineUI } from './engineui.js';
+import { EngineDispatch } from './enginedispatch.js';
 
 export const trackingChannel = supabase.channel('live-tracking', {
     config: { broadcast: { ack: false } }
@@ -90,6 +91,14 @@ export const EngineSimulator = {
                 this.activeMissions.set(amb.id, { 
                     ...missionData, stage: 'waiting_driver_action', route: [], currentStep: 0, lat: ambLat, lng: ambLng, heading: 0 
                 });
+                EngineUI.log('DISPATCH', `[DISPATCH] RECOVERY MODE ACTIVE for INC#${inc.id}`, 'system');
+                EngineDispatch.dispatchState.set(inc.id, {
+                    incident: inc,
+                    retries: 0,
+                    failedAmbulances: new Set(),
+                    timer: null
+                });
+                EngineDispatch.launchDriverWatchdog(inc.id, amb.id);
             } else if (amb.status === 'en_route_incident') {
                 this.queueRouteRequest({
                     ...missionData,
@@ -97,7 +106,7 @@ export const EngineSimulator = {
                     targetCoords: { lat: incLat, lng: incLng },
                     stage: 'to_incident'
                 });
-            } else if (amb.status === 'arrived') {
+            } else if (amb.status === 'in_progress') {
                 this.activeMissions.set(amb.id, { 
                     ...missionData, stage: 'waiting_pickup', route: [], currentStep: 0, lat: ambLat, lng: ambLng, heading: 0 
                 });
@@ -163,7 +172,7 @@ export const EngineSimulator = {
                 if (!mission) return; 
 
                 // 3. ARRIVED at Incident
-                if (newStatus === 'arrived') {
+                if (newStatus === 'in_progress') {
                     mission.stage = 'waiting_pickup';
                     mission.route = []; // Stop
                 }
@@ -192,8 +201,19 @@ export const EngineSimulator = {
                 // 6. AVAILABLE -> Jump to Patrol
                 else if (newStatus === 'available') {
                     if (['waiting_hospital_action', 'waiting_driver_action', 'waiting_pickup'].includes(mission.stage)) {
-                        this.activeMissions.delete(ambId);
-                        this.assignPatrol({ id: ambId, code: payload.new.code, lat: mission.lat, lng: mission.lng });
+                        // Only block patrol if ambulance is tied to a pre-hospital active incident.
+                        // hospital_confirmed means patient was handed off → ambulance is free to patrol.
+                        supabase.from(DB_TABLES.INCIDENTS).select('id')
+                            .eq('assigned_ambulance_id', ambId)
+                            .in('status', ['pending', 'confirmed', 'assigned', 'in_progress', 'arrived_hospital'])
+                            .then(({ data }) => {
+                                if (data && data.length > 0) {
+                                    console.warn(`[SIMULATOR] Blocked premature patrol for amb ${ambId} - still assigned to active incident #${data[0].id}`);
+                                    return;
+                                }
+                                this.activeMissions.delete(ambId);
+                                this.assignPatrol({ id: ambId, code: payload.new.code, lat: mission.lat, lng: mission.lng });
+                            });
                     }
                 }
             }).subscribe();
@@ -240,19 +260,57 @@ export const EngineSimulator = {
                     }
                 }
 
-                // ─── COMPLETED: Hospital confirmed patient handover ────────────────────────
-                // Hospital triggered COMPLETED
-                if (oldInc.status !== 'completed' && newInc.status === 'completed' && newInc.assigned_ambulance_id) {
+                // ─── HOSPITAL_CONFIRMED: Patient admitted to bed ─────────────────────
+                // The hospital accepted the patient → FREE the ambulance, but keep the incident OPEN.
+                // The incident only completes when the hospital discharges the patient (dischargeBed).
+                if (newInc.status === 'hospital_confirmed' && oldInc.status !== 'hospital_confirmed') {
                     const ambId = newInc.assigned_ambulance_id;
-                    const mission = this.activeMissions.get(ambId);
-                    
-                    await logIncidentAction(newInc.id, 'hospital_confirmed', 'hospital', 'Patient handover completed.');
-                    await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'available' }).eq('id', ambId);
-
-                    if (mission) {
+                    if (ambId) {
+                        EngineUI.log('SIM', `[LIFECYCLE] Hospital confirmed INC#${newInc.id}. Releasing ambulance ${ambId}.`, 'system');
+                        await logIncidentAction(newInc.id, 'hospital_intake', 'hospital', 'Patient admitted. Ambulance released.');
+                        // Release the ambulance so it can take new missions
+                        await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'available' }).eq('id', ambId);
+                        // Remove from active missions — ambulance goes to patrol
                         this.activeMissions.delete(ambId);
-                        this.assignPatrol({ id: ambId, code: mission.amb.code, lat: mission.lat, lng: mission.lng });
                     }
+                }
+
+                // ─── COMPLETED: Patient discharged from hospital ────────────────────────
+                // Fires when hospital discharges (dischargeBed/markDeceased → status='completed')
+                // At this point, ambulance was ALREADY released at hospital_confirmed.
+                // This handler only needs to: log, recover device, and fire local events.
+                if (newInc.status === 'completed' && oldInc.status !== 'completed') {
+                    const ambId = newInc.assigned_ambulance_id || oldInc.assigned_ambulance_id;
+                    const deviceId = newInc.device_id;
+                    const outcome = newInc.outcome || 'recovered';
+                    
+                    if (ambId) {
+                        await logIncidentAction(newInc.id, 'patient_discharged', 'hospital', `Patient discharged (outcome: ${outcome}).`);
+                    }
+
+                    // Fallback device recovery — hospital dischargeBed already handles this,
+                    // but this ensures it happens even if hospital tab is closed.
+                    if (deviceId) {
+                        const newDeviceStatus = outcome === 'deceased' ? 'suspended' : 'active';
+                        await supabase.from(DB_TABLES.DEVICES).update({ status: newDeviceStatus }).eq('id', deviceId);
+                        console.log(`[LIFECYCLE] SIMULATOR: Device ${deviceId} status → ${newDeviceStatus}`);
+                    }
+
+                    console.log(`[LIFECYCLE] SIMULATOR: INC#${newInc.id} COMPLETED (amb=${ambId}, dev=${deviceId}, outcome=${outcome})`);
+                    
+                    // Local events: Fast same-tab propagation for EngineDispatch and EngineCivilians
+                    window.dispatchEvent(new CustomEvent('engine:incident_completed', {
+                        detail: { incidentId: newInc.id }
+                    }));
+
+                    window.dispatchEvent(new CustomEvent('engine:device_recovered', {
+                        detail: {
+                            deviceId: deviceId,
+                            lat: newInc.latitude,
+                            lng: newInc.longitude,
+                            outcome: outcome
+                        }
+                    }));
                 }
             }).subscribe();
     },
@@ -481,6 +539,28 @@ export const EngineSimulator = {
                 continue;
             }
 
+            // ── Proximity-based arrival detection ──────────────────────────
+            // If ambulance is within 100m of actual destination, trigger arrival
+            // immediately. This catches cases where route has many remaining
+            // micro-steps but ambulance is effectively at the target.
+            if (mission.stage === 'to_incident' || mission.stage === 'to_hospital') {
+                const target = mission.stage === 'to_incident' 
+                    ? (mission.targetCoords || mission.hospCoords) 
+                    : mission.hospCoords;
+                if (target) {
+                    const dLatM = (mission.lat - target.lat) * 111320;
+                    const dLngM = (mission.lng - target.lng) * 111320 * (Math.cos(mission.lat * Math.PI / 180) || 1);
+                    const distToTarget = Math.sqrt(dLatM * dLatM + dLngM * dLngM);
+                    if (distToTarget < 100) {
+                        mission.lat = target.lat;
+                        mission.lng = target.lng;
+                        this.handleArrival(ambId, mission);
+                        continue;
+                    }
+                }
+            }
+
+            // Route-step completion check (fallback)
             if (mission.currentStep >= mission.route.length - 1) {
                 this.handleArrival(ambId, mission);
                 continue;
@@ -563,7 +643,7 @@ export const EngineSimulator = {
         else if (mission.stage === 'to_incident') {
             mission.stage = 'waiting_pickup';
             await logIncidentAction(mission.incId, 'arrived', 'system', 'Ambulance arrived at incident location.');
-            await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'arrived', lat: mission.lat, lng: mission.lng }).eq('id', ambId);
+            await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'in_progress', lat: mission.lat, lng: mission.lng }).eq('id', ambId);
         } 
         else if (mission.stage === 'to_hospital') {
             mission.stage = 'waiting_hospital_action';

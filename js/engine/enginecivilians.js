@@ -2,7 +2,7 @@
 // 🚙 EnQaZ Core Engine - Civilian Traffic Simulator (V3.8 - CORS Fix)
 // ============================================================================
 
-import { supabase, DB_TABLES } from '../config/supabase.js';
+import { supabase, DB_TABLES, isIncidentCancelled } from '../config/supabase.js';
 import { EngineUI } from './engineui.js';
 import { trackingChannel } from './enginesimulator.js';
 
@@ -30,6 +30,7 @@ export const EngineCivilians = {
         await this.loadInitialData();
         
         this.setupRealtimeListeners();
+        this.setupDatabaseListeners();
         this.startTrafficLoop();
         this.startRandomizer(); 
 
@@ -87,6 +88,71 @@ export const EngineCivilians = {
             this.movingCivilians.delete(devId); 
             this.osrmQueue = this.osrmQueue.filter(req => req.id !== devId);
         });
+
+        // KEEP: Fast same-tab fallback for device recovery
+        window.addEventListener('engine:device_recovered', (e) => {
+            const { deviceId, lat, lng, outcome } = e.detail;
+            if (outcome !== 'deceased') {
+                console.log(`[LIFECYCLE] CIVILIANS: Local event recovery for DEV#${deviceId}`);
+                this.restartDeviceSimulation(deviceId, lat, lng);
+            } else {
+                // Deceased: remove from busy set without restarting simulation
+                this.busyDeviceIds.delete(deviceId);
+                console.log(`[LIFECYCLE] CIVILIANS: Device ${deviceId} marked deceased, removed from pool.`);
+            }
+        });
+    },
+
+    // ─── DB-driven PRIMARY recovery mechanism ──────────────────────────────────────────
+    // Fires for ALL tabs. Survives missed events, restarts, race conditions.
+    // Both this and the local event call the same idempotent restartDeviceSimulation().
+    setupDatabaseListeners() {
+        supabase.channel('civilians-incident-watch')
+            .on('postgres_changes', {
+                event: 'UPDATE', schema: 'public', table: DB_TABLES.INCIDENTS
+            }, (payload) => {
+                const newInc = payload.new;
+                const oldInc = payload.old;
+                
+                // COMPLETED transition
+                if (newInc.status === 'completed' && oldInc.status !== 'completed') {
+                    const outcome = newInc.outcome || 'recovered';
+                    if (outcome !== 'deceased') {
+                        console.log(`[LIFECYCLE] CIVILIANS: DB-driven recovery for DEV#${newInc.device_id} (completed)`);
+                        this.restartDeviceSimulation(newInc.device_id, newInc.latitude, newInc.longitude);
+                    } else {
+                        this.busyDeviceIds.delete(newInc.device_id);
+                        console.log(`[LIFECYCLE] CIVILIANS: DB-driven deceased removal for DEV#${newInc.device_id}`);
+                    }
+                }
+                
+                // CANCELLED transition
+                if (isIncidentCancelled(newInc.status) && !isIncidentCancelled(oldInc.status)) {
+                    console.log(`[LIFECYCLE] CIVILIANS: DB-driven recovery for DEV#${newInc.device_id} (cancelled)`);
+                    this.restartDeviceSimulation(newInc.device_id, newInc.latitude, newInc.longitude);
+                }
+            }).subscribe();
+    },
+
+    restartDeviceSimulation(deviceId, lat, lng) {
+        if (!deviceId) return;
+        
+        // Idempotent: if device is already free, skip silently
+        if (!this.busyDeviceIds.has(deviceId)) {
+            console.log(`[LIFECYCLE] CIVILIANS: DEV#${deviceId} already free. Idempotent skip.`);
+            return;
+        }
+
+        this.busyDeviceIds.delete(deviceId);
+        
+        const device = this.allDevices.get(deviceId);
+        if (device) {
+            device.lat = parseFloat(lat) || device.lat;
+            device.lng = parseFloat(lng) || device.lng;
+        }
+
+        console.log(`[LIFECYCLE] CIVILIANS: DEV#${deviceId} freed and returned to simulation pool.`);
+        EngineUI.log('CIV', `Device ${deviceId} fully recovered and returned to simulation pool.`, 'success');
     },
 
     startRandomizer() {

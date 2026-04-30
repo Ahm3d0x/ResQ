@@ -2,6 +2,8 @@
 // 🗺️ EnQaZ Map Engine (Advanced Dynamic Module) - Anti-Jitter Version
 // ============================================================================
 
+import { isIncidentVisible } from '../config/supabase.js';
+
 export const SIM_CONFIG = {
     OSRM_URL: 'https://router.project-osrm.org/route/v1/driving/'
 };
@@ -186,7 +188,8 @@ export const MapEngine = {
     updateMarkers(type, dataList) {
         let filteredData = dataList;
         if (type === 'incidents') {
-            filteredData = dataList.filter(inc => inc.status !== 'completed' && inc.status !== 'CANCELLED' && inc.status !== 'cancelled');
+            // Only show non-terminal incidents AND not in hospital phase
+            filteredData = dataList.filter(inc => isIncidentVisible(inc.status));
         }
 
         const currentIds = new Set(filteredData.map(item => String(item.id)));

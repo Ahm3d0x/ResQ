@@ -54,12 +54,14 @@ export const ROLES = {
 };
 
 export const INCIDENT_STATUS = {
-    PENDING:     'pending',
-    CONFIRMED:   'confirmed',
-    CANCELLED:   'cancelled',   // AUTHORITATIVE spelling — double-L only. 'canceled' (1L) is deprecated.
-    ASSIGNED:    'assigned',
-    IN_PROGRESS: 'in_progress',
-    COMPLETED:   'completed'
+    PENDING:              'pending',
+    CONFIRMED:            'confirmed',
+    CANCELLED:            'cancelled',   // AUTHORITATIVE spelling — double-L only. 'canceled' (1L) is deprecated.
+    ASSIGNED:             'assigned',
+    IN_PROGRESS:          'in_progress',
+    ARRIVED_HOSPITAL:     'arrived_hospital',
+    HOSPITAL_CONFIRMED:   'hospital_confirmed',  // Patient admitted — incident still ACTIVE until discharge
+    COMPLETED:            'completed'
     // NOTE: 'failed' is NOT a valid incident_status_enum value in the DB. Do NOT use it.
 };
 
@@ -76,6 +78,18 @@ export function isIncidentTerminal(status) {
     // Only 'cancelled'/'canceled' and 'completed' are valid terminal states in the DB enum.
     // 'failed' does NOT exist in incident_status_enum.
     return status === 'cancelled' || status === 'canceled' || status === 'completed';
+}
+
+export function isIncidentVisible(status) {
+   return ![
+     'completed',
+     'cancelled',
+     'canceled', // catch legacy
+     'hospital_confirmed',
+     'arrived_hospital',
+     'arrived',
+     'busy'
+   ].includes(status);
 }
 
 // ============================================================================

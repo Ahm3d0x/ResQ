@@ -53,11 +53,23 @@ export const UserApp = {
         this.state.device = device;
 
         // Fetch medical data from device applications
-        const { data: medData } = await supabase
-            .from('device_applications')
-            .select('*')
-            .eq('email', this.state.user.email)
-            .maybeSingle();
+        let medData = null;
+        if (device && device.application_id) {
+            const { data } = await supabase
+                .from('device_applications')
+                .select('*')
+                .eq('id', device.application_id)
+                .single();
+            medData = data;
+        } else {
+            const { data } = await supabase
+                .from('device_applications')
+                .select('*')
+                .eq('email', this.state.user.email)
+                .limit(1)
+                .maybeSingle();
+            medData = data;
+        }
         this.state.medicalData = medData;
 
         await this.loadIncidents();
@@ -142,39 +154,66 @@ export const UserApp = {
         container.innerHTML = incidents.map(inc => {
             const st = statusConfig[inc.status] || statusConfig.pending;
             const date = new Date(inc.created_at);
+            const statusColorBase = st.color.split('-')[1] || 'gray';
 
             return `
-            <div class="bg-white dark:bg-usr-card border border-gray-200 dark:border-usr-border rounded-xl p-4 hover:border-usr-accent/40 transition-all cursor-pointer group" onclick="UserApp.viewIncident(${inc.id})">
+            <div class="bg-white dark:bg-usr-card border border-gray-200 dark:border-usr-border rounded-2xl p-5 hover:border-usr-accent/50 hover:shadow-lg hover:shadow-usr-accent/5 transition-all cursor-pointer group relative overflow-hidden" onclick="UserApp.viewIncident(${inc.id})">
+                <!-- Status side border indicator -->
+                <div class="absolute right-0 top-0 bottom-0 w-1 bg-${statusColorBase}-500 opacity-70"></div>
+                
                 <div class="flex items-center justify-between gap-4">
-                    <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-12 h-12 rounded-xl ${st.bg} flex items-center justify-center shrink-0">
-                            <i class="fa-solid ${st.icon} ${st.color} text-lg"></i>
+                    <div class="flex items-center gap-4 min-w-0">
+                        <div class="w-14 h-14 rounded-2xl ${st.bg} border border-${statusColorBase}-500/20 flex items-center justify-center shrink-0 shadow-inner">
+                            <i class="fa-solid ${st.icon} ${st.color} text-2xl"></i>
                         </div>
                         <div class="min-w-0">
-                            <div class="font-black text-sm">حادث #${inc.id}</div>
-                            <div class="text-[10px] text-gray-500 flex items-center gap-2 mt-0.5">
-                                <span><i class="fa-regular fa-calendar ml-1"></i>${date.toLocaleDateString('ar-EG')}</span>
-                                <span><i class="fa-regular fa-clock ml-1"></i>${date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                            <div class="font-black text-base text-gray-800 dark:text-white flex items-center gap-2">
+                                حادث #${inc.id}
+                                ${inc.is_false_alarm ? '<span class="text-[9px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded border border-red-500/20">بلاغ كاذب</span>' : ''}
+                            </div>
+                            <div class="text-xs text-gray-500 flex items-center gap-3 mt-1.5 font-medium">
+                                <span class="flex items-center gap-1"><i class="fa-regular fa-calendar-days"></i> ${date.toLocaleDateString('ar-EG')}</span>
+                                <span class="flex items-center gap-1"><i class="fa-regular fa-clock"></i> ${date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-3 shrink-0">
-                        <div class="text-left hidden sm:block">
-                            <div class="text-[10px] text-gray-500">المستشفى</div>
-                            <div class="text-xs font-bold">${inc.hospitals?.name || '—'}</div>
+                    
+                    <div class="flex items-center gap-6 shrink-0">
+                        <div class="text-left hidden md:block">
+                            <div class="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">المستشفى المستقبل</div>
+                            <div class="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5 justify-end">
+                                ${inc.hospitals?.name || '<span class="text-gray-500 font-normal">جاري التحديد...</span>'}
+                                <i class="fa-solid fa-hospital text-gray-400 text-[10px]"></i>
+                            </div>
                         </div>
                         <div class="text-left hidden sm:block">
-                            <div class="text-[10px] text-gray-500">الإسعاف</div>
-                            <div class="text-xs font-bold text-blue-400">${inc.ambulances?.code || '—'}</div>
+                            <div class="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">كود الإسعاف</div>
+                            <div class="text-sm font-bold text-blue-500 flex items-center gap-1.5 justify-end">
+                                ${inc.ambulances?.code || '<span class="text-gray-500 font-normal">في الانتظار...</span>'}
+                                <i class="fa-solid fa-truck-medical text-gray-400 text-[10px]"></i>
+                            </div>
                         </div>
-                        <span class="text-[10px] font-bold px-2.5 py-1 rounded-full ${st.bg} ${st.color} whitespace-nowrap">${st.label}</span>
-                        <i class="fa-solid fa-chevron-left text-gray-500 group-hover:text-usr-accent transition text-xs"></i>
+                        
+                        <div class="flex flex-col items-end gap-2">
+                            <span class="text-xs font-bold px-3 py-1.5 rounded-lg ${st.bg} ${st.color} border border-${statusColorBase}-500/20 whitespace-nowrap shadow-sm flex items-center gap-1.5">
+                                <i class="fa-solid ${st.icon}"></i> ${st.label}
+                            </span>
+                        </div>
+                        <i class="fa-solid fa-chevron-left text-gray-400 group-hover:text-usr-accent group-hover:-translate-x-1 transition-all text-sm ml-2"></i>
                     </div>
                 </div>
-                ${inc.g_force ? `
-                <div class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-4 text-[10px] text-gray-500">
-                    <span><i class="fa-solid fa-gauge-high text-red-400 ml-1"></i> قوة: ${inc.g_force}G</span>
-                    ${inc.speed ? `<span><i class="fa-solid fa-tachometer-alt text-blue-400 ml-1"></i> سرعة: ${parseFloat(inc.speed).toFixed(0)} كم/س</span>` : ''}
+                
+                ${(inc.g_force || inc.outcome || inc.devices) ? `
+                <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-5 text-xs text-gray-500 font-medium">
+                        ${inc.g_force ? `<span class="flex items-center gap-1.5" title="قوة التصادم"><i class="fa-solid fa-gauge-high text-red-400"></i> ${inc.g_force}G</span>` : ''}
+                        ${inc.speed ? `<span class="flex items-center gap-1.5" title="سرعة المركبة"><i class="fa-solid fa-tachometer-alt text-blue-400"></i> ${parseFloat(inc.speed).toFixed(0)} كم/س</span>` : ''}
+                        ${inc.devices ? `<span class="flex items-center gap-1.5"><i class="fa-solid fa-car-side text-gray-400"></i> ${inc.devices.car_model || ''} (${inc.devices.car_plate || ''})</span>` : ''}
+                    </div>
+                    ${inc.outcome ? `
+                    <div class="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg max-w-xs truncate" title="${inc.outcome}">
+                        <i class="fa-solid fa-notes-medical ml-1 opacity-50"></i> ${inc.outcome}
+                    </div>` : ''}
                 </div>` : ''}
             </div>`;
         }).join('');
@@ -369,14 +408,35 @@ export const UserApp = {
 
         tbody.innerHTML = visitors.map(v => {
             const date = new Date(v.created_at);
-            const method = v.device_uid_searched ? 'رقم الجهاز' : 'بريد إلكتروني';
+            const isDevice = v.search_query_raw && v.search_query_raw.startsWith('ENQ-');
+            const method = isDevice ? 'رقم الجهاز' : 'بريد إلكتروني';
+            const methodIcon = isDevice ? 'fa-microchip' : 'fa-envelope';
 
             return `
-            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                <td class="py-3 px-3 text-xs text-gray-500">${date.toLocaleString('ar-EG')}</td>
-                <td class="py-3 px-3 text-xs font-bold">${v.visitor_email || '-'}</td>
-                <td class="py-3 px-3"><span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 font-bold">${method}</span></td>
-                <td class="py-3 px-3 text-xs text-gray-400 font-mono">${v.search_query_raw || v.device_uid_searched || '-'}</td>
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-100 dark:border-gray-800 last:border-0">
+                <td class="py-4 px-4 text-xs text-gray-500">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-regular fa-clock text-gray-400"></i>
+                        <span>${date.toLocaleDateString('ar-EG')} - ${date.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})}</span>
+                    </div>
+                </td>
+                <td class="py-4 px-4 text-sm font-bold">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500 shrink-0">
+                            <i class="fa-solid fa-user"></i>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-gray-800 dark:text-gray-200 truncate">${v.visitor_name || 'مجهول'}</span>
+                            <span class="text-[10px] text-gray-500 font-normal truncate">${v.visitor_email || '-'}</span>
+                        </div>
+                    </div>
+                </td>
+                <td class="py-4 px-4">
+                    <span class="text-[10px] px-2.5 py-1 rounded-full bg-blue-500/15 border border-blue-500/20 text-blue-400 font-bold flex items-center gap-1.5 w-fit">
+                        <i class="fa-solid ${methodIcon}"></i> ${method}
+                    </span>
+                </td>
+                <td class="py-4 px-4 text-xs text-gray-400 font-mono tracking-wider">${v.search_query_raw || v.device_uid_searched || '-'}</td>
             </tr>`;
         }).join('');
     },
@@ -392,14 +452,28 @@ export const UserApp = {
         document.getElementById('setEmail').value = u.email || '';
         document.getElementById('setPhone').value = u.phone || '';
 
+        // Car Info
+        document.getElementById('setCarBrand').value = med.car_brand || '';
+        document.getElementById('setCarModel').value = med.car_model || '';
+        document.getElementById('setCarPlate').value = med.car_plate || '';
+        document.getElementById('setCarColor').value = med.car_color || '';
+
+        // Medical Info
         document.getElementById('setBlood').value = med.blood_type || '';
         document.getElementById('setAllergies').value = med.allergies || '';
         document.getElementById('setMedications').value = med.medications || '';
         document.getElementById('setConditions').value = med.medical_conditions || '';
 
+        // Emergency Contacts
         document.getElementById('setEc1Name').value = med.emergency1_name || '';
         document.getElementById('setEc1Phone').value = med.emergency1_phone || '';
         document.getElementById('setEc1Rel').value = med.emergency1_relation || '';
+        document.getElementById('setEc1Email').value = med.emergency1_email || '';
+
+        document.getElementById('setEc2Name').value = med.emergency2_name || '';
+        document.getElementById('setEc2Phone').value = med.emergency2_phone || '';
+        document.getElementById('setEc2Rel').value = med.emergency2_relation || '';
+        document.getElementById('setEc2Email').value = med.emergency2_email || '';
     },
 
     async saveProfile() {
@@ -426,15 +500,35 @@ export const UserApp = {
 
             // 3. Update medical data (if exists)
             if (this.state.medicalData) {
-                await supabase.from('device_applications').update({
+                const updatePayload = {
                     blood_type: document.getElementById('setBlood').value,
                     allergies: document.getElementById('setAllergies').value,
                     medications: document.getElementById('setMedications').value,
                     medical_conditions: document.getElementById('setConditions').value,
+                    car_brand: document.getElementById('setCarBrand').value,
+                    car_model: document.getElementById('setCarModel').value,
+                    car_plate: document.getElementById('setCarPlate').value,
+                    car_color: document.getElementById('setCarColor').value,
                     emergency1_name: document.getElementById('setEc1Name').value,
                     emergency1_phone: document.getElementById('setEc1Phone').value,
                     emergency1_relation: document.getElementById('setEc1Rel').value,
-                }).eq('id', this.state.medicalData.id);
+                    emergency1_email: document.getElementById('setEc1Email').value,
+                    emergency2_name: document.getElementById('setEc2Name').value,
+                    emergency2_phone: document.getElementById('setEc2Phone').value,
+                    emergency2_relation: document.getElementById('setEc2Rel').value,
+                    emergency2_email: document.getElementById('setEc2Email').value
+                };
+                
+                await supabase.from('device_applications').update(updatePayload).eq('id', this.state.medicalData.id);
+                this.state.medicalData = { ...this.state.medicalData, ...updatePayload };
+            }
+
+            // Sync with device if vehicle data changed
+            if (this.state.device) {
+                await supabase.from('devices').update({
+                    car_plate: document.getElementById('setCarPlate').value,
+                    car_model: `${document.getElementById('setCarBrand').value} ${document.getElementById('setCarModel').value}`
+                }).eq('id', this.state.device.id);
             }
 
             msg.textContent = '✅ تم حفظ جميع التغييرات بنجاح';

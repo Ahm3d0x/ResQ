@@ -2,7 +2,7 @@
 // 🎛️ EnQaZ Dashboard Controller (Luxury View & Telemetry Receiver) - V4.0
 // ============================================================================
 
-import { supabase, DB_TABLES, logIncidentAction, isIncidentCancelled } from '../config/supabase.js';
+import { supabase, DB_TABLES, logIncidentAction, isIncidentTerminal, isIncidentVisible } from '../config/supabase.js';
 import { MapEngine, SIM_CONFIG } from './mapEngine.js';
     const SMOOTHING_FACTOR = 0.001; // نعومة فائقة للحركة
 
@@ -227,45 +227,70 @@ async function loadDevices() {
  * 📡 الاستماع للتحديثات الجوهرية من قاعدة البيانات
  */
 function setupDatabaseRealtime() {
-    supabase.channel('dashboard-db-sync')
+    // ─── INCIDENTS REALTIME FIX ───
+    supabase.channel('admin-incidents')
         .on('postgres_changes', { event: '*', schema: 'public', table: DB_TABLES.INCIDENTS }, payload => {
+            console.log('[REALTIME:PAYLOAD]', payload);
+            const newInc = payload.new;
+            const oldInc = payload.old;
+
             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                const newInc = payload.new;
-
-                if (isIncidentCancelled(newInc.status) || newInc.status === 'completed') {
-                    // Stop any active route visualization
-                    MapEngine.toggleIncidentRoute(newInc.id, null, null, null, null, null, null, null, false);
-                    
-                    // HARDENED UI: If cancelled, remove from local data immediately to prevent ghosting.
-                    // Using isIncidentCancelled() guards against both 'cancelled' and 'CANCELLED' spellings
-                    // during any DB migration period.
-                    if (isIncidentCancelled(newInc.status)) {
-                        delete window.rawData.incidents[newInc.id];
-                        window.updateAllUI();
-                        return; // Halt logic for this payload
-                    }
-                }
-
-                if (window.rawData.incidents[newInc.id]) {
-                    window.rawData.incidents[newInc.id] = { ...window.rawData.incidents[newInc.id], ...newInc };
+                // To satisfy DEVICE STATE RULE (devices must stay busy during hospital phase),
+                // we MUST keep the incident in rawData until it is strictly TERMINAL.
+                // The UI (renderIncidents & map markers) will hide it based on isIncidentVisible().
+                if (!isIncidentTerminal(newInc.status)) {
+                    window.rawData.incidents[newInc.id] = newInc;
                 } else {
-                    loadEntities(); 
-                }
-                window.updateAllUI(); 
-            } else if (payload.eventType === 'DELETE') {
-                delete window.rawData.incidents[payload.old.id];
-                window.updateAllUI();
-            }
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: DB_TABLES.AMBULANCES }, payload => {
-            if (payload.eventType === 'UPDATE') {
-                if (window.rawData.ambulances[payload.new.id]) {
-                    window.rawData.ambulances[payload.new.id].status = payload.new.status;
-                    window.updateAllUI();
+                    delete window.rawData.incidents[newInc.id];
+                    // Also trigger route cleanup
+                    MapEngine.toggleIncidentRoute(newInc.id, null, null, null, null, null, null, null, false);
                 }
             }
+
+            if (payload.eventType === 'DELETE') {
+                delete window.rawData.incidents[oldInc.id];
+            }
+
+            window.updateAllUI();
         })
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('[REALTIME:CONNECTED] Incidents channel connected');
+            }
+        });
+
+    // ─── DEVICES REALTIME FIX ───
+    supabase.channel('admin-devices')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: DB_TABLES.DEVICES }, payload => {
+            console.log('[REALTIME:PAYLOAD]', payload);
+            const dev = payload.new;
+            
+            // G) RACE CONDITION FIX: Always allow object modification without checking existence
+            window.rawData.devices[dev.id] = { ...(window.rawData.devices[dev.id] || {}), ...dev };
+            
+            console.log('[REALTIME] Device updated', dev.id);
+            window.updateAllUI();
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('[REALTIME:CONNECTED] Devices channel connected');
+            }
+        });
+
+    // ─── AMBULANCES REALTIME FIX ───
+    supabase.channel('admin-ambulances')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: DB_TABLES.AMBULANCES }, payload => {
+            console.log('[REALTIME:PAYLOAD]', payload);
+            const amb = payload.new;
+            
+            window.rawData.ambulances[amb.id] = { ...(window.rawData.ambulances[amb.id] || {}), ...amb };
+            window.updateAllUI();
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('[REALTIME:CONNECTED] Ambulances channel connected');
+            }
+        });
 }
 
 /**
@@ -349,14 +374,19 @@ window.updateAllUI = function() {
     if (typeof window.renderDevices === 'function') window.renderDevices();
     
     const allIncidents = Object.values(window.rawData.incidents);
-    const visibleIncidents = allIncidents.filter(inc => inc.status === 'pending' || inc.status === 'assigned');
+    // UI VISIBILITY RULE: Show incidents on map only if they are NOT terminal and NOT in hospital phase
+    const visibleIncidents = allIncidents.filter(inc => isIncidentVisible(inc.status));
     MapEngine.updateMarkers('incidents', visibleIncidents);
     
     MapEngine.updateMarkers('hospitals', Object.values(window.rawData.hospitals));
     MapEngine.updateMarkers('ambulances', Object.values(window.rawData.ambulances));
     
-    const busyStatuses = ['pending', 'assigned', 'in_progress', 'completed']; 
-    const busyDeviceIds = allIncidents.filter(inc => busyStatuses.includes(inc.status)).map(inc => String(inc.device_id));
+    // Devices are "busy" during the ENTIRE active lifecycle — not just pending/assigned/in_progress.
+    // This includes hospital-phase states (arrived_hospital, hospital_confirmed).
+    // Using negative filter: any incident that is NOT terminal keeps its device busy.
+    const busyDeviceIds = allIncidents
+        .filter(inc => !isIncidentTerminal(inc.status))
+        .map(inc => String(inc.device_id));
     const visibleDevices = Object.values(window.rawData.devices).filter(dev => !busyDeviceIds.includes(String(dev.id)));
     
     MapEngine.updateMarkers('devices', visibleDevices);
@@ -390,7 +420,7 @@ window.renderIncidents = function() {
     if(!list) return;
     
     const activeIncidents = Object.values(window.rawData.incidents)
-        .filter(inc => inc.status !== 'completed' && !isIncidentCancelled(inc.status))
+        .filter(inc => isIncidentVisible(inc.status))
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const pendingBadge = document.getElementById('pendingCountBadge');
@@ -465,10 +495,9 @@ window.renderDevices = function() {
     }
 
     const allIncidents = Object.values(window.rawData.incidents);
-    const busyStatuses = ['pending', 'assigned', 'in_progress', 'completed'];
     
     list.innerHTML = dataToRender.map(dev => {
-        const hasIncident = allIncidents.find(inc => String(inc.device_id) === String(dev.id) && busyStatuses.includes(inc.status));
+        const hasIncident = allIncidents.find(inc => String(inc.device_id) === String(dev.id) && !isIncidentTerminal(inc.status));
         const isMoving = dev.currentSpeed > 0;
         
         const iconClass = hasIncident ? 'fa-car-burst animate-bounce' : 'fa-car';
@@ -512,8 +541,7 @@ window.openPanel = function(type, id) {
         `;
     }
     else if (type === 'devices') {
-        const busyStatuses = ['pending', 'assigned', 'in_progress', 'completed'];
-        const activeIncident = Object.values(window.rawData.incidents).find(inc => String(inc.device_id) === String(data.id) && busyStatuses.includes(inc.status));
+        const activeIncident = Object.values(window.rawData.incidents).find(inc => String(inc.device_id) === String(data.id) && !isIncidentTerminal(inc.status));
         const isMoving = data.currentSpeed > 0;
         const isTracked = MapEngine.trackedEntity === `devices_${data.id}`; 
 
@@ -672,11 +700,10 @@ async function executeCancel(incId) {
     }
 
     // HARDENED: Guard against double-execution.
-    // If the incident is already cancelled locally (e.g., admin clicked Cancel twice,
-    // or the realtime update already set it), bail out immediately without inserting
-    // a duplicate hardware_request row.
-    if (isIncidentCancelled(inc.status)) {
-        console.log(`[DEBUG:CANCEL_FLOW] executeCancel: INC#${incId} already cancelled locally. Skipping duplicate insert.`);
+    // If the incident is already in a terminal state (cancelled or completed),
+    // bail out immediately without inserting a duplicate hardware_request row.
+    if (isIncidentTerminal(inc.status)) {
+        console.log(`[DEBUG:CANCEL_FLOW] executeCancel: INC#${incId} already terminal (${inc.status}). Skipping.`);
         return;
     }
 

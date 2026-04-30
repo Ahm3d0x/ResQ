@@ -225,12 +225,135 @@ export const IncidentLog = {
     },
 
     listenForKillSwitch() {
+        window.addEventListener('engine:incident_assigned_for_email', (e) => {
+            const { incidentId, hospitalName, hospLat, hospLng } = e.detail;
+            this.sendEmergencyAlerts(incidentId, hospitalName, hospLat, hospLng);
+        });
+        
         window.addEventListener('engine:kill_switch', () => {
             if (this.watchdogTimer) clearInterval(this.watchdogTimer);
             this.watchdogQueue = [];
             EngineUI.renderWatchdogQueue([]);
             EngineUI.log('SYS', 'Watchdog Timer HALTED.', 'dim');
         });
+    },
+
+    async sendEmergencyAlerts(incidentId, hospitalName, hospLat, hospLng) {
+        try {
+            // 1. Fetch Incident and Device Data
+            const { data: incident } = await supabase.from('incidents')
+                .select('lat, longitude, latitude, longitude, devices(application_id, users(name))')
+                .eq('id', incidentId)
+                .single();
+                
+            if (!incident || !incident.devices || !incident.devices.application_id) return;
+
+            const lat = parseFloat(incident.lat || incident.latitude);
+            const lng = parseFloat(incident.longitude);
+            const app_id = incident.devices.application_id;
+
+            // 2. Fetch Application for emergency contacts
+            const { data: app } = await supabase.from('device_applications')
+                .select('emergency1_name, emergency1_email, emergency2_name, emergency2_email, email, car_plate, car_model, car_brand')
+                .eq('id', app_id)
+                .single();
+
+            if (!app) return;
+
+            // 3. Prepare the dynamic HTML message
+            const gmapsInc = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+            const gmapsHosp = (hospLat && hospLng) ? `https://www.google.com/maps/search/?api=1&query=${hospLat},${hospLng}` : '';
+            const currentYear = new Date().getFullYear();
+            
+            const msgHtml = `
+            <!DOCTYPE html>
+            <html lang="ar" dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; margin: 0; padding: 0; }
+                    .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+                    .header { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 30px 20px; text-align: center; color: white; }
+                    .header img { width: 80px; margin-bottom: 15px; background: white; padding: 10px; border-radius: 50%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                    .header h1 { margin: 0; font-size: 24px; font-weight: 800; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+                    .content { padding: 30px; text-align: right; color: #334155; }
+                    .content p { font-size: 16px; line-height: 1.6; margin-bottom: 20px; }
+                    .highlight { font-weight: bold; color: #ef4444; }
+                    .card { background: #fef2f2; border: 1px solid #fca5a5; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+                    .card-item { margin-bottom: 12px; font-size: 15px; border-bottom: 1px dashed #fecaca; padding-bottom: 12px; }
+                    .card-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+                    .card-item strong { display: inline-block; width: 120px; color: #991b1b; }
+                    .btn { display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-size: 14px; font-weight: bold; text-align: center; }
+                    .btn-red { background: #ef4444; }
+                    .footer { background: #0f172a; color: #94a3b8; text-align: center; padding: 20px; font-size: 13px; line-height: 1.5; }
+                    .footer strong { color: #f8fafc; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <img src="https://i.ibb.co/3W6nQ8k/logo.png" alt="EnQaZ Logo">
+                        <h1>🚨 إنذار طوارئ عاجل 🚨</h1>
+                    </div>
+                    
+                    <div class="content">
+                        <p>عزيزي المشترك،<br>تم رصد <span class="highlight">حادث اصطدام</span> لمركبة مسجلة في نظام إنقاذ باسم: <strong>${incident.devices.users?.name || 'مجهول'}</strong>.</p>
+                        
+                        <div class="card">
+                            <div class="card-item"><strong>رقم الحادث:</strong> #${incidentId}</div>
+                            <div class="card-item"><strong>المركبة:</strong> ${app.car_brand} ${app.car_model} (${app.car_plate})</div>
+                            <div class="card-item"><strong>المستشفى الموجه إليه:</strong> ${hospitalName || 'جاري التحديد'}</div>
+                            <div class="card-item" style="margin-top: 15px;">
+                                <a href="${gmapsInc}" class="btn btn-red" style="color:white !important;">📍 موقع الحادث</a>
+                                ${gmapsHosp ? `<a href="${gmapsHosp}" class="btn" style="color:white !important; margin-right: 5px;">🏥 موقع المستشفى</a>` : ''}
+                            </div>
+                        </div>
+                        
+                        <p style="font-size: 14px; color: #64748b;">فرق الإسعاف التابعة للنظام في طريقها الآن للتعامل مع الحالة. يرجى التوجه إلى المستشفى المذكور أو التواصل مع الجهات المعنية.</p>
+                    </div>
+                    
+                    <div class="footer">
+                        <p>إدارة تحت إشراف <strong>فريق إنقاذ</strong></p>
+                        <p>جميع الحقوق محفوظة لفريق إنقاذ &copy; ${currentYear}</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            `;
+
+            const serviceID = "service_j22noer"; 
+            const templateID = "template_79afdrq"; 
+            const publicKey = "YKJgvPCGxkJif7-o3";
+
+            const contacts = [];
+            if (app.emergency1_email && app.emergency1_email.trim() !== '') {
+                contacts.push({ name: app.emergency1_name, email: app.emergency1_email });
+            }
+            if (app.emergency2_email && app.emergency2_email.trim() !== '') {
+                contacts.push({ name: app.emergency2_name, email: app.emergency2_email });
+            }
+            
+            // Fallback to user email if no emergency emails are provided
+            if (contacts.length === 0 && app.email) {
+                contacts.push({ name: incident.devices.users?.name || 'مستخدم النظام', email: app.email });
+            }
+
+            for (const contact of contacts) {
+                const emailParams = {
+                    name: 'EnQaZ Emergency System',
+                    to_name: contact.name || 'جهة اتصال الطوارئ',
+                    to_email: contact.email,
+                    reason: '',
+                    message: msgHtml
+                };
+                await emailjs.send(serviceID, templateID, emailParams, publicKey);
+            }
+            EngineUI.log('SYS', `Emergency Alert Emails Sent (${contacts.length} recipients) via EmailJS for Incident #${incidentId}`, 'success');
+
+        } catch (error) {
+            console.error("Failed to send emergency alerts:", error);
+            EngineUI.log('ERR', `Failed to send Emergency Email: ${error.message}`, 'alert');
+        }
     }
 };
 

@@ -175,7 +175,7 @@ export const EngineUI = {
             if (amb) {
                 telemetry.database.ambTotal = amb.length;
                 telemetry.database.ambAvail = amb.filter(a => a.status === 'available').length;
-                telemetry.database.ambBusy = amb.filter(a => a.status === 'busy' || a.status === 'assigned' || a.status.includes('en_route') || a.status === 'arrived').length;
+                telemetry.database.ambBusy = amb.filter(a => a.status === 'busy' || a.status === 'assigned' || a.status.includes('en_route') || a.status === 'in_progress').length;
                 telemetry.database.ambPatrol = amb.filter(a => a.status === 'patrol').length;
             }
 

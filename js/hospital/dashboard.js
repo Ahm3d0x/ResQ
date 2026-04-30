@@ -22,6 +22,7 @@ export const HospitalApp = {
         trackingChannel: null,
         currentTab: 'dashboard',
         bedFilter: 'all',
+        killedAmbulances: new Set(),
     },
 
     // ==========================================
@@ -145,6 +146,7 @@ export const HospitalApp = {
         this.state.incomingCases = incidents || [];
         this.renderIncomingCases();
         this.renderMapOverlays();
+        this.cleanupOrphanRoutes();
         this.updateStats();
     },
 
@@ -235,7 +237,7 @@ export const HospitalApp = {
             const ambStatus = amb?.status || 'unknown';
             const patientName = inc.devices?.users?.name || 'غير معروف';
             const carInfo = `${inc.devices?.car_model || ''} ${inc.devices?.car_plate || ''}`.trim();
-            const isArrived = ambStatus === 'busy' || ambStatus === 'arrived';
+            const isArrived = ambStatus === 'busy' || inc.status === 'arrived_hospital';
 
             const statusMap = {
                 'assigned': { label: 'تم التعيين', color: 'text-blue-400', bg: 'bg-blue-500/15' },
@@ -381,6 +383,20 @@ export const HospitalApp = {
         }).join('');
     },
 
+    cleanupOrphanRoutes() {
+        this.state.routeLayers.forEach((layer, ambId) => {
+            const exists = this.state.incomingCases.some(
+                c => String(c.assigned_ambulance_id) === String(ambId)
+            );
+
+            if (!exists) {
+                this.state.map.removeLayer(layer);
+                this.state.routeLayers.delete(ambId);
+                console.log('[CLEANUP] Removed orphan route', ambId);
+            }
+        });
+    },
+
     updateStats() {
         const beds = this.state.beds;
         const totalBeds = beds.length;
@@ -410,49 +426,81 @@ export const HospitalApp = {
                 filter: `assigned_hospital_id=eq.${this.state.hospital.id}`
             }, async (payload) => {
                 console.log("📡 [Hospital] Incident change:", payload.eventType, payload.new?.status);
-                await this.loadIncomingCases();
+                
+                // Add Real-time Incident Termination Listener
+                if (payload.new && (payload.new.status === 'completed' || payload.new.status === 'cancelled')) {
+                    const incId = payload.new.id;
+                    const existingCase = this.state.incomingCases.find(c => c.id === incId);
+                    const ambId = existingCase?.assigned_ambulance_id || payload.new.assigned_ambulance_id;
+                    
+                    // Remove case instantly from UI
+                    this.state.incomingCases = this.state.incomingCases.filter(c => c.id !== incId);
+                    
+                    // Remove incident marker
+                    if (this.state.incidentMarkers.has(incId)) {
+                        this.state.map.removeLayer(this.state.incidentMarkers.get(incId));
+                        this.state.incidentMarkers.delete(incId);
+                        console.log('[MAP CLEANUP] Removed incident', incId);
+                    }
+                    
+                    // FORCE cleanup (even لو مفيش existingCase)
+                    if (ambId) {
+                        this.state.killedAmbulances.add(String(ambId));
+                        if (this.state.routeLayers.has(ambId)) {
+                            this.state.map.removeLayer(this.state.routeLayers.get(ambId));
+                            this.state.routeLayers.delete(ambId);
+                            console.log('[MAP CLEANUP] Removed route for amb', ambId);
+                        }
+                        if (this.state.ambMarkers.has(ambId)) {
+                            this.state.map.removeLayer(this.state.ambMarkers.get(ambId));
+                            this.state.ambMarkers.delete(ambId);
+                        }
+                    }
 
-                if (payload.eventType === 'INSERT' || (payload.eventType === 'UPDATE' && payload.new.status === 'assigned')) {
-                    this.showToast('🚨 حالة طوارئ جديدة واردة!', 'warning');
-                    await this.addLog('incident_received', { incident_id: payload.new.id, note: 'تم استلام حالة طوارئ جديدة' });
+                    this.state.map.invalidateSize();
+                    this.cleanupOrphanRoutes();
+
+                    this.showToast("تم إنهاء الحالة", "info");
+                    
+                    // Render updates
+                    this.renderIncomingCases();
+                    this.updateStats();
+                } else {
+                    await this.loadIncomingCases();
+
+                    const isNewAssignment = payload.eventType === 'INSERT' || 
+                        (payload.eventType === 'UPDATE' && payload.new.status === 'assigned' && payload.old?.status !== 'assigned');
+
+                    if (isNewAssignment) {
+                        const alreadyLogged = this.state.logs.some(l => {
+                            const meta = typeof l.metadata === 'string' ? JSON.parse(l.metadata || '{}') : (l.metadata || {});
+                            return l.action === 'incident_received' && meta.incident_id == payload.new.id;
+                        });
+
+                        if (!alreadyLogged) {
+                            this.showToast('🚨 حالة طوارئ جديدة واردة!', 'warning');
+                            await this.addLog('incident_received', { incident_id: payload.new.id, note: 'تم استلام حالة طوارئ جديدة' });
+                            await this.loadLogs(); // Refresh logs to ensure it's in state
+                        }
+                    }
                 }
             }).subscribe();
 
-        // Listen to ambulance status changes
+        // Listen to ambulance status changes to load incoming cases if ambulance status changed 
         supabase.channel('hospital-amb-watch')
             .on('postgres_changes', {
                 event: 'UPDATE', schema: 'public', table: DB_TABLES.AMBULANCES
             }, async (payload) => {
-                // Check proximity and update
                 const ambId = payload.new.id;
-                const ambLat = parseFloat(payload.new.lat);
-                const ambLng = parseFloat(payload.new.lng);
-
-                // Check if this ambulance is assigned to one of our incidents
                 const relevantCase = this.state.incomingCases.find(c => c.assigned_ambulance_id === ambId);
                 if (!relevantCase) return;
-
-                // Check proximity
-                const dist = this.haversineKm(
-                    parseFloat(this.state.hospital.lat), parseFloat(this.state.hospital.lng),
-                    ambLat, ambLng
-                );
-
-                if (dist <= PROXIMITY_RADIUS_KM) {
-                    const card = document.querySelector(`[data-inc-id="${relevantCase.id}"]`);
-                    if (card && !card.classList.contains('nearby')) {
-                        card.classList.add('nearby');
-                        this.showToast(`🚑 إسعاف ${payload.new.code} يقترب! (${dist.toFixed(1)} كم)`, 'info');
-                    }
-                }
-
-                // Reload to update statuses
                 await this.loadIncomingCases();
             }).subscribe();
     },
 
     setupTrackingChannel() {
         this.state.trackingChannel = supabase.channel('live-tracking');
+        if (!this.state.proximityCache) this.state.proximityCache = new Map();
 
         this.state.trackingChannel.on('broadcast', { event: 'fleet_update' }, (payload) => {
             const fleet = payload.payload;
@@ -464,7 +512,9 @@ export const HospitalApp = {
             fleet.forEach(amb => {
                 if (!assignedAmbIds.has(String(amb.id))) return;
 
-                const latLng = [parseFloat(amb.lat), parseFloat(amb.lng)];
+                const ambLat = parseFloat(amb.lat);
+                const ambLng = parseFloat(amb.lng);
+                const latLng = [ambLat, ambLng];
 
                 // Update or create marker
                 if (this.state.ambMarkers.has(amb.id)) {
@@ -480,6 +530,46 @@ export const HospitalApp = {
                     }).addTo(this.state.map);
                     this.state.ambMarkers.set(amb.id, marker);
                 }
+
+                // Proximity Logic - Only trigger if heading to hospital
+                const relevantCase = this.state.incomingCases.find(c => String(c.assigned_ambulance_id) === String(amb.id));
+                if (relevantCase && amb.stage === 'to_hospital') {
+                    const dist = this.haversineKm(
+                        parseFloat(this.state.hospital.lat), parseFloat(this.state.hospital.lng),
+                        ambLat, ambLng
+                    );
+
+                    let newState = 'far';
+                    let cardClass = '';
+                    if (dist <= 0.5) { newState = 'arriving'; cardClass = 'arriving'; }
+                    else if (dist <= 2) { newState = 'very_near'; cardClass = 'very-near'; }
+                    else if (dist <= 5) { newState = 'near'; cardClass = 'nearby'; }
+
+                    const currentState = this.state.proximityCache.get(amb.id) || 'far';
+                    
+                    if (newState !== currentState && newState !== 'far') {
+                        this.state.proximityCache.set(amb.id, newState);
+                        
+                        const card = document.querySelector(`[data-inc-id="${relevantCase.id}"]`);
+                        if (card) {
+                            card.classList.remove('nearby', 'very-near', 'arriving');
+                            card.classList.add(cardClass);
+                        }
+
+                        const ambCode = relevantCase.ambulances?.code || amb.id;
+                        
+                        if (newState === 'arriving') {
+                            console.log("[PROXIMITY] ARRIVING");
+                            this.showToast(`🚨 إسعاف ${ambCode} وصل إلى المستشفى! (${dist.toFixed(2)} كم)`, 'warning');
+                        } else if (newState === 'very_near') {
+                            console.log("[PROXIMITY] VERY NEAR");
+                            this.showToast(`🚑 إسعاف ${ambCode} قريب جداً! (${dist.toFixed(1)} كم)`, 'info');
+                        } else if (newState === 'near') {
+                            console.log("[PROXIMITY] ENTERED RADIUS");
+                            this.showToast(`🚑 إسعاف ${ambCode} دخل النطاق! (${dist.toFixed(1)} كم)`, 'info');
+                        }
+                    }
+                }
             });
         })
         .on('broadcast', { event: 'route_established' }, (payload) => {
@@ -489,9 +579,38 @@ export const HospitalApp = {
             // Only show route for active mission stages
             if (data.stage !== 'to_incident' && data.stage !== 'to_hospital') return;
 
-            // Check if this ambulance is assigned to our hospital
-            const assignedAmbIds = new Set(this.state.incomingCases.map(c => String(c.assigned_ambulance_id)));
-            if (!assignedAmbIds.has(String(data.ambId))) return;
+            if (this.state.killedAmbulances.has(String(data.ambId))) {
+                console.log('[BLOCK] Dead ambulance route prevented');
+                return;
+            }
+
+            const relatedCase = this.state.incomingCases.find(
+                c => String(c.assigned_ambulance_id) === String(data.ambId)
+            );
+
+            // ❌ HARD BLOCK (NEW)
+            if (!relatedCase) {
+                console.log('[BLOCK] No related case → skip route draw');
+
+                if (this.state.routeLayers.has(data.ambId)) {
+                    this.state.map.removeLayer(this.state.routeLayers.get(data.ambId));
+                    this.state.routeLayers.delete(data.ambId);
+                }
+
+                return;
+            }
+
+            // ❌ HARD BLOCK 2
+            if (['completed', 'cancelled', 'hospital_confirmed'].includes(relatedCase.status)) {
+                console.log('[BLOCK] Case inactive → skip route draw');
+
+                if (this.state.routeLayers.has(data.ambId)) {
+                    this.state.map.removeLayer(this.state.routeLayers.get(data.ambId));
+                    this.state.routeLayers.delete(data.ambId);
+                }
+
+                return;
+            }
 
             // Remove old route for this ambulance
             if (this.state.routeLayers.has(data.ambId)) {
@@ -532,13 +651,12 @@ export const HospitalApp = {
                 this.showToast('⚠️ تم تعيين سرير لهذه الحالة مسبقاً!', 'error');
                 return;
             }
-            // 1. Update incident to completed
-            await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'completed' }).eq('id', incidentId);
+            // 1. Update incident to hospital_confirmed (patient admitted, NOT discharged yet).
+            // The incident is still ACTIVE — 'completed' only happens at discharge.
+            await supabase.from(DB_TABLES.INCIDENTS).update({ status: 'hospital_confirmed' }).eq('id', incidentId);
 
-            // 2. Free ambulance
-            if (incident.assigned_ambulance_id) {
-                await supabase.from(DB_TABLES.AMBULANCES).update({ status: 'available' }).eq('id', incident.assigned_ambulance_id);
-            }
+            // NOTE: Ambulance is NOT freed here. It remains 'busy' until discharge.
+            // The Engine Simulator handles ambulance mission stage via its own realtime listener.
 
             // 3. Assign bed
             await supabase.from('hospital_beds').update({
@@ -585,6 +703,37 @@ export const HospitalApp = {
         const bed = this.state.beds.find(b => b.id === bedId);
         if (!bed || bed.status !== 'occupied') return;
 
+        if (bed.incident_id) {
+            const { data: incident } = await supabase.from(DB_TABLES.INCIDENTS).select('device_id, assigned_ambulance_id').eq('id', bed.incident_id).single();
+            
+            // Complete the incident — this is the ONLY place an incident becomes 'completed'
+            await supabase.from(DB_TABLES.INCIDENTS).update({
+                status: 'completed',
+                resolved_at: new Date().toISOString(),
+                outcome: 'recovered'
+            }).eq('id', bed.incident_id);
+            console.log("[LIFECYCLE] INCIDENT COMPLETED via hospital discharge");
+
+            // NOTE: Ambulance was already released to 'available' at hospital_confirmed.
+            // No need to update ambulance status here.
+
+            // Recover the device so it can resume movement on the admin dashboard
+            if (incident && incident.device_id) {
+                await supabase.from(DB_TABLES.DEVICES).update({ status: 'active' }).eq('id', incident.device_id);
+                console.log("[DEVICE] RECOVERY TRIGGERED — device resumes simulation");
+            }
+
+            if (incident) {
+                window.dispatchEvent(new CustomEvent('engine:incident_completed', {
+                    detail: {
+                        incidentId: bed.incident_id,
+                        deviceId: incident.device_id,
+                        outcome: 'recovered'
+                    }
+                }));
+            }
+        }
+
         await supabase.from('hospital_beds').update({
             status: 'available',
             patient_name: null,
@@ -610,6 +759,38 @@ export const HospitalApp = {
         const bed = this.state.beds.find(b => b.id === bedId);
         if (!bed || bed.status !== 'occupied') return;
 
+        if (bed.incident_id) {
+            const { data: incident } = await supabase.from(DB_TABLES.INCIDENTS).select('device_id, assigned_ambulance_id').eq('id', bed.incident_id).single();
+            
+            // Complete the incident with deceased outcome
+            await supabase.from(DB_TABLES.INCIDENTS).update({
+                status: 'completed',
+                resolved_at: new Date().toISOString(),
+                outcome: 'deceased',
+                patient_status: 'deceased'
+            }).eq('id', bed.incident_id);
+            console.log("[LIFECYCLE] INCIDENT COMPLETED (deceased)");
+
+            // NOTE: Ambulance was already released to 'available' at hospital_confirmed.
+
+            // Suspend the device — owner is deceased, device locked until family takes over
+            if (incident && incident.device_id) {
+                await supabase.from(DB_TABLES.DEVICES).update({ status: 'suspended' }).eq('id', incident.device_id);
+                console.log("[DEVICE] SUSPENDED — owner deceased");
+            }
+            
+            if (incident) {
+                window.dispatchEvent(new CustomEvent('engine:incident_completed', {
+                    detail: {
+                        incidentId: bed.incident_id,
+                        deviceId: incident.device_id,
+                        outcome: 'deceased'
+                    }
+                }));
+            }
+        }
+        console.log("[PATIENT] DECEASED FLOW EXECUTED");
+
         // Free bed
         await supabase.from('hospital_beds').update({
             status: 'available',
@@ -618,11 +799,6 @@ export const HospitalApp = {
             incident_id: null,
             admission_time: null
         }).eq('id', bedId);
-
-        // If incident linked, mark patient_status
-        if (bed.incident_id) {
-            await supabase.from(DB_TABLES.INCIDENTS).update({ patient_status: 'deceased' }).eq('id', bed.incident_id);
-        }
 
         await this.addLog('patient_deceased', {
             incident_id: bed.incident_id,

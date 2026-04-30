@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { t } from '../core/language.js'; // استدعاء دالة الترجمة
+import { supabase } from '../config/supabase.js';
 
 window.switchView = function(viewId) {
     document.querySelectorAll('main > section').forEach(el => {
@@ -294,6 +295,151 @@ document.addEventListener('DOMContentLoaded', () => {
     // سيارتين في البداية فوراً
     spawnCivilianCar(); 
     setTimeout(spawnCivilianCar, 1500);
+
+    // ==========================================
+    // إعداد نموذج البحث الخاص بالزوار
+    // ==========================================
+    const searchForm = document.getElementById('visitorSearchForm');
+    if (searchForm) {
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btnSearchSubmit');
+            const resultsContainer = document.getElementById('searchResults');
+            const name = document.getElementById('visitorName').value.trim();
+            const email = document.getElementById('visitorEmail').value.trim();
+            const query = document.getElementById('searchInput').value.trim();
+            
+            if (!name || !email || !query) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري البحث...';
+            resultsContainer.classList.add('hidden');
+            resultsContainer.innerHTML = '';
+
+            try {
+                // 1. البحث عن الجهاز إما عن طريق UID الخاص به أو إيميل المستخدم
+                let deviceQuery = supabase.from('devices').select('id, device_uid, users!inner(email, name), car_model, car_plate');
+                
+                if (query.includes('@')) {
+                    deviceQuery = deviceQuery.eq('users.email', query);
+                } else {
+                    deviceQuery = deviceQuery.eq('device_uid', query);
+                }
+
+                const { data: devices, error: devError } = await deviceQuery.limit(1);
+
+                let incidentId = null;
+                let finalDeviceUid = query;
+                let resultHtml = '';
+
+                if (!devices || devices.length === 0 || devError) {
+                    resultHtml = `
+                        <div class="flex items-center gap-3 text-red-500 mb-2">
+                            <i class="fa-solid fa-circle-xmark text-2xl"></i>
+                            <h3 class="font-bold text-lg">لم يتم العثور على المريض</h3>
+                        </div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">لم نتمكن من العثور على جهاز أو مستخدم يطابق "${query}". يرجى التأكد من البيانات والمحاولة مرة أخرى.</p>
+                    `;
+                } else {
+                    const device = devices[0];
+                    finalDeviceUid = device.device_uid;
+
+                    // 2. التحقق من وجود حادث نشط لهذا الجهاز
+                    const { data: incidents, error: incError } = await supabase.from('incidents')
+                        .select('*, hospitals(name, phone, address_details), ambulances(code)')
+                        .eq('device_id', device.id)
+                        .neq('status', 'completed')
+                        .neq('status', 'cancelled')
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+
+                    if (incidents && incidents.length > 0) {
+                        const incident = incidents[0];
+                        incidentId = incident.id;
+                        
+                        const statusMap = {
+                            'pending': { label: 'جاري تعيين إسعاف', color: 'text-red-500', icon: 'fa-clock' },
+                            'assigned': { label: 'تم تعيين الإسعاف', color: 'text-yellow-500', icon: 'fa-truck-medical' },
+                            'en_route_incident': { label: 'الإسعاف في طريقه للحادث', color: 'text-orange-500', icon: 'fa-route' },
+                            'in_progress': { label: 'الإسعاف وصل لموقع الحادث', color: 'text-blue-500', icon: 'fa-user-nurse' },
+                            'en_route_hospital': { label: 'في الطريق إلى المستشفى', color: 'text-purple-500', icon: 'fa-truck-fast' },
+                            'arrived_hospital': { label: 'وصل إلى المستشفى', color: 'text-green-500', icon: 'fa-hospital' },
+                            'hospital_confirmed': { label: 'تم استقبال الحالة بالمستشفى', color: 'text-emerald-500', icon: 'fa-bed-pulse' }
+                        };
+                        const statusKey = (incident.status || '').toLowerCase();
+                        const statusInfo = statusMap[statusKey] || { label: incident.status, color: 'text-gray-500', icon: 'fa-info-circle' };
+                        
+                        let hospitalInfo = incident.hospitals ? `
+                            <div class="mt-4 p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700">
+                                <div class="text-xs text-gray-500 mb-1">المستشفى المتجه إليه</div>
+                                <div class="font-bold text-gray-900 dark:text-white">${incident.hospitals.name}</div>
+                                ${incident.hospitals.address_details ? `<div class="text-xs text-gray-600 mt-1"><i class="fa-solid fa-location-dot mr-1"></i> ${incident.hospitals.address_details}</div>` : ''}
+                                ${incident.hospitals.phone ? `<div class="text-xs text-gray-600 mt-1"><i class="fa-solid fa-phone mr-1"></i> ${incident.hospitals.phone}</div>` : ''}
+                            </div>
+                        ` : `<div class="mt-4 text-xs text-gray-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> جاري تحديد أقرب مستشفى...</div>`;
+
+                        resultHtml = `
+                            <div class="flex items-center gap-3 ${statusInfo.color} mb-4">
+                                <i class="fa-solid ${statusInfo.icon} text-3xl"></i>
+                                <div>
+                                    <h3 class="font-bold text-lg leading-tight">يوجد حالة طوارئ نشطة</h3>
+                                    <div class="text-sm opacity-80">${statusInfo.label}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+                                <div>
+                                    <span class="block text-xs text-gray-500">اسم المريض</span>
+                                    <span class="font-bold text-gray-900 dark:text-white">${device.users?.name || 'غير معروف'}</span>
+                                </div>
+                                <div>
+                                    <span class="block text-xs text-gray-500">المركبة</span>
+                                    <span class="font-bold text-gray-900 dark:text-white">${device.car_model || ''} ${device.car_plate || ''}</span>
+                                </div>
+                                <div>
+                                    <span class="block text-xs text-gray-500">وقت الحادث</span>
+                                    <span class="font-bold text-gray-900 dark:text-white">${new Date(incident.created_at).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}</span>
+                                </div>
+                                <div>
+                                    <span class="block text-xs text-gray-500">وحدة الإسعاف</span>
+                                    <span class="font-bold text-gray-900 dark:text-white">${incident.ambulances?.code || 'جاري التعيين'}</span>
+                                </div>
+                            </div>
+                            ${hospitalInfo}
+                        `;
+                    } else {
+                        resultHtml = `
+                            <div class="flex items-center gap-3 text-green-500 mb-2">
+                                <i class="fa-solid fa-shield-check text-2xl"></i>
+                                <h3 class="font-bold text-lg">المستخدم بخير</h3>
+                            </div>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">لا توجد أي حوادث طارئة نشطة مسجلة للمستخدم <b>${device.users?.name || 'غير معروف'}</b>.</p>
+                        `;
+                    }
+                }
+
+                resultsContainer.innerHTML = resultHtml;
+                resultsContainer.classList.remove('hidden');
+
+                // 3. تسجيل عملية البحث في قاعدة البيانات
+                await supabase.from('visitor_searches').insert([{
+                    visitor_name: name,
+                    visitor_email: email,
+                    device_uid_searched: finalDeviceUid || 'UNKNOWN',
+                    search_query_raw: query,
+                    incident_id: incidentId
+                }]);
+
+            } catch (err) {
+                console.error('Search error:', err);
+                resultsContainer.innerHTML = `<div class="text-red-500 text-sm">حدث خطأ أثناء الاتصال بقاعدة البيانات.</div>`;
+                resultsContainer.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-search"></i> <span data-i18n="btnSearch">Search Database</span>';
+            }
+        });
+    }
 });
 
 // ==========================================
