@@ -30,7 +30,13 @@ export const HospitalApp = {
     // ==========================================
     async init() {
         console.log("🏥 Initializing Hospital Dashboard V1.0...");
-
+// 🌟 ADD THIS: Apply saved theme BEFORE initializing the map
+        const savedTheme = localStorage.getItem('hospital_theme') || 'dark';
+        if (savedTheme === 'light') {
+            document.documentElement.classList.remove('dark');
+            const themeIcon = document.getElementById('themeIcon');
+            if (themeIcon) themeIcon.className = 'fa-solid fa-sun';
+        }
         await this.authenticate();
         if (!this.state.hospital) return;
 
@@ -43,6 +49,7 @@ export const HospitalApp = {
         this.setupTrackingChannel();
         this.bindEvents();
         this.updateStats();
+        this.initMap();
     },
 
     async authenticate() {
@@ -95,39 +102,92 @@ export const HospitalApp = {
     // ==========================================
     // 🗺️ Map System (5KM Radar)
     // ==========================================
+// ==========================================
+    // 🗺️ Map System (5KM Radar)
+    // ==========================================
     initMap() {
-        const lat = parseFloat(this.state.hospital.lat) || 30.0444;
-        const lng = parseFloat(this.state.hospital.lng) || 31.2357;
+        // 1. Prevent duplicate maps from breaking things
+        if (this.state.map) return; 
 
-        this.state.map = L.map('hospital-map', { zoomControl: false, attributionControl: false }).setView([lat, lng], 14);
+        const lat = parseFloat(this.state.hospital?.lat) || 30.0444;
+        const lng = parseFloat(this.state.hospital?.lng) || 31.2357;
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(this.state.map);
+        this.state.map = L.map('hospital-map', { 
+            zoomControl: false, 
+            attributionControl: false 
+        }).setView([lat, lng], 14);
 
+        // 2. Define our map URLs clearly
+        const mapThemes = {
+            dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            light: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+        };
+
+        // 3. Check current theme right now
+        const isDark = document.documentElement.classList.contains('dark');
+
+        // 4. Create the base layer AND save it to state
+        this.state.baseLayer = L.tileLayer(isDark ? mapThemes.dark : mapThemes.light, { 
+            maxZoom: 19 
+        }).addTo(this.state.map);
+
+        // 🌟 5. BULLETPROOF THEME WATCHER
+        // This watches the <html> tag. The millisecond "dark" is added or removed, 
+        // it forces the map to update, bypassing any other bugs.
+        const observer = new MutationObserver(() => {
+            const isDarkNow = document.documentElement.classList.contains('dark');
+            if (this.state.baseLayer) {
+                this.state.baseLayer.setUrl(isDarkNow ? mapThemes.dark : mapThemes.light);
+            }
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+        // ========================================================
+        // 🏥 Keep your existing marker code below this line:
+        // ========================================================
+        
         // Hospital marker
         this.state.hospitalMarker = L.marker([lat, lng], {
             icon: L.divIcon({
-                className: 'hospital-marker',
-                html: `<div style="width:44px;height:44px;background:rgba(16,185,129,0.2);border:2px solid #10b981;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#10b981;font-size:18px;box-shadow:0 0 20px rgba(16,185,129,0.4)"><i class="fa-solid fa-hospital"></i></div>`,
-                iconSize: [44, 44], iconAnchor: [22, 22]
-            }),
-            zIndexOffset: 1000
-        }).addTo(this.state.map).bindPopup(`<b>${this.state.hospital.name}</b>`);
+                className: 'custom-div-icon',
+                html: `<div class="w-12 h-12 bg-hospital-card rounded-xl border-2 border-hospital-accent flex items-center justify-center shadow-lg shadow-hospital-accent/20">
+                        <i class="fa-solid fa-hospital text-hospital-accent text-xl animate-pulse"></i>
+                       </div>`,
+                iconSize: [48, 48],
+                iconAnchor: [24, 24]
+            })
+        }).addTo(this.state.map);
 
-        // 5KM radius circle
+        // 5KM Radar Circle
         this.state.radiusCircle = L.circle([lat, lng], {
             radius: PROXIMITY_RADIUS_KM * 1000,
             color: '#10b981',
             fillColor: '#10b981',
-            fillOpacity: 0.04,
+            fillOpacity: 0.05,
             weight: 1,
-            dashArray: '8, 8'
+            dashArray: '5, 10'
         }).addTo(this.state.map);
+    },
+    // 🌟 3. Add Theme Toggle Function
+    toggleTheme() {
+        const html = document.documentElement;
+        const isDarkNow = html.classList.toggle('dark'); 
+        
+        // Save preference
+        localStorage.setItem('hospital_theme', isDarkNow ? 'dark' : 'light');
 
-        // Fit to radius
-        this.state.map.fitBounds(this.state.radiusCircle.getBounds(), { padding: [20, 20] });
+        // Swap icon
+        const themeIcon = document.getElementById('themeIcon');
+        if (themeIcon) {
+            themeIcon.className = isDarkNow ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+        }
 
-        // Fix resize
-        setTimeout(() => this.state.map.invalidateSize(), 300);
+        // Swap map tiles instantly
+        if (this.state.baseLayer) {
+            const darkUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+            const lightUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+            this.state.baseLayer.setUrl(isDarkNow ? darkUrl : lightUrl);
+        }
     },
 
     // ==========================================
