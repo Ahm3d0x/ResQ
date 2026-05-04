@@ -18,6 +18,26 @@
         .leaflet-marker-icon {
     transition: transform 1s linear !important;
 }
+/* Custom CSS for Leaflet in Dark Mode */
+.dark .leaflet-container {
+    background: #0f172a; /* matches your secondary color */
+}
+
+/* Invert map controls in dark mode so they are visible */
+.dark .leaflet-control-zoom-in,
+.dark .leaflet-control-zoom-out,
+.dark .leaflet-control-attribution {
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
+    border-color: #334155 !important;
+}
+
+/* Optional: If you stay with standard tiles but want a "faked" dark mode via CSS filters */
+/*
+.dark .leaflet-tile-container {
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+*/
 /* الحركة السلسة الافتراضية عند تحديث البيانات */
 .leaflet-marker-icon, .smooth-marker {
     transition: transform 1s linear !important;
@@ -130,7 +150,7 @@
 <div id="module-dashboard" class="h-full flex gap-4 w-full transition-opacity duration-300">
                 
                 <div id="mapContainer" class="flex-1 bg-gray-900 z-10 rounded-2xl overflow-hidden relative shadow-lg transition-all duration-500">
-                    <div id="adminMap" class="w-full h-full bg-[#1a1a2e]"></div>
+                    <div id="adminMap" class="w-full h-full"></div>
                     
 <div class="absolute top-20 left-4 rtl:right-4 rtl:left-auto z-[400] bg-white/90 dark:bg-gray-900/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 flex flex-col gap-3 min-w-[200px]">
     <h3 class="font-bold text-sm border-b border-gray-200 dark:border-gray-700 pb-2" data-i18n="mapControls">تحكم الخريطة</h3>
@@ -157,7 +177,7 @@
         <input type="checkbox" id="toggleHeatmapMap" onchange="window.toggleHeatmapAction(this.checked)" class="accent-orange-500 w-4 h-4">
     </label>
 
-    <label class="flex items-center justify-between text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 p-1 rounded transition-colors">
+    <label class="hidden flex items-center justify-between text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 p-1 rounded transition-colors">
         <div class="flex items-center gap-2"><i class="fa-solid fa-traffic-light text-red-500 w-4 text-center"></i> <span data-i18n="traffic">الزحام المروري</span></div>
         <input type="checkbox" id="toggleTrafficMap" onchange="window.toggleTrafficAction(this.checked)" class="accent-red-500 w-4 h-4">
     </label>
