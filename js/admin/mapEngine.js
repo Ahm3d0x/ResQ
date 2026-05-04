@@ -17,10 +17,8 @@ export const MapEngine = {
     trackedEntity: null, 
     incidentRoutes: {},
     
-    // 🛡️ درع الحماية: يمنع تداخل الأوامر السريعة مع الانتقال السينمائي
     isFlying: false, 
 
-    // استخراج الإحداثيات الحية بدقة
     getEntityLatLng(type, id) {
         const marker = this.markers[type]?.[String(id)];
         if (marker) {
@@ -67,26 +65,17 @@ export const MapEngine = {
         } catch(e) { console.error("Failed to draw rescue route", e); }
     },
     isMapInteracting: false,
-    init(containerId, centerLat = 30.0444, centerLng = 31.2357, onMarkerClick) {
+init(containerId, centerLat = 30.0444, centerLng = 31.2357, onMarkerClick) {
         if(this.map) return; 
         this.map = L.map(containerId, { zoomControl: false }).setView([centerLat, centerLng], 12);
         L.control.zoom({ position: 'bottomright' }).addTo(this.map);
         
-        // 🛡️ المعالجة الذكية: حماية الخريطة أثناء الزووم أو الكليك
         const origSetView = this.map.setView.bind(this.map);
         this.map.setView = function(center, zoom, options) {
-            // تجاهل أي أمر إذا كانت الخريطة تقوم بـ Zoom أو FlyTo حالياً
             if (MapEngine.isFlying || this._animatingZoom) return this;
             return origSetView(center, zoom, options);
         };
-// إضافة مستمعات الأحداث (Event Listeners) لإيقاف الـ CSS Transition أثناء الزووم
-        // this.map.on('zoomstart', () => {
-        //     this.map.getContainer().classList.add('is-zooming');
-        // });
-        
-        // this.map.on('zoomend', () => {
-        //     this.map.getContainer().classList.remove('is-zooming');
-        // });
+
         this.map.on('zoomstart dragstart', () => {
             this.isMapInteracting = true;
             this.map.getContainer().classList.add('is-interacting');
@@ -94,32 +83,45 @@ export const MapEngine = {
         
         this.map.on('zoomend dragend', () => {
             this.map.getContainer().classList.remove('is-interacting');
-            // تأخير نصف ثانية قبل إعادة التتبع لضمان نعومة العودة
             setTimeout(() => { this.isMapInteracting = false; }, 500);
         });
+
         const origPanTo = this.map.panTo.bind(this.map);
         this.map.panTo = function(center, options) {
             if (MapEngine.isFlying || this._animatingZoom) return this;
             return origPanTo(center, options);
         };
 
-        // 🌟 قائمة مزودي الخرائط
-        const mapProviders = [
-            'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', 
-            'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', 
-            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' 
-        ];
+        // ==========================================
+        // 🌟 NEW THEME HANDLING LOGIC
+        // ==========================================
         
-        let currentProviderIndex = 0;
-        let baseLayer = L.tileLayer(mapProviders[currentProviderIndex], { maxZoom: 19 }).addTo(this.map);
+        // 1. Define standard tiles for both modes
+        const themeTiles = {
+            dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            light: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+        };
 
-        baseLayer.on('tileerror', () => {
-            currentProviderIndex++;
-            if (currentProviderIndex < mapProviders.length) {
-                baseLayer.setUrl(mapProviders[currentProviderIndex]);
-            }
-        });
+        // 2. Check current Tailwind theme on the HTML tag
+        const isDarkMode = document.documentElement.classList.contains('dark');
         
+        // 3. Initialize map with the correct tile layer
+        // (Saved to 'this' so we can update it later)
+        this.baseLayer = L.tileLayer(isDarkMode ? themeTiles.dark : themeTiles.light, { 
+            maxZoom: 19 
+        }).addTo(this.map);
+
+        // 4. Watch for Theme Changes in real-time
+        // This observer watches the <html> tag for class changes (Tailwind dark mode toggle)
+        const observer = new MutationObserver(() => {
+            const isDarkNow = document.documentElement.classList.contains('dark');
+            this.baseLayer.setUrl(isDarkNow ? themeTiles.dark : themeTiles.light);
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+        // (Optional: You can keep your fallback logic here if needed, but Carto/OSM are very stable)
+        // ==========================================
+
         this.layerGroups.hospitals = L.layerGroup().addTo(this.map);
         this.layerGroups.ambulances = L.layerGroup().addTo(this.map);
         this.layerGroups.incidents = L.layerGroup().addTo(this.map);
